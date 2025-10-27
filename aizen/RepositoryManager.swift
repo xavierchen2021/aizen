@@ -1,0 +1,268 @@
+//
+//  RepositoryManager.swift
+//  aizen
+//
+//  Created by Uladzislau Yakauleu on 17.10.25.
+//
+
+import Foundation
+import CoreData
+import AppKit
+import Combine
+
+@MainActor
+class RepositoryManager: ObservableObject {
+    private let viewContext: NSManagedObjectContext
+    let gitService = GitService()
+
+    nonisolated var objectWillChange: ObservableObjectPublisher {
+        ObservableObjectPublisher()
+    }
+
+    init(viewContext: NSManagedObjectContext) {
+        self.viewContext = viewContext
+    }
+
+    // MARK: - Workspace Operations
+
+    func createWorkspace(name: String, colorHex: String? = nil) throws -> Workspace {
+        let workspace = Workspace(context: viewContext)
+        workspace.id = UUID()
+        workspace.name = name
+        workspace.colorHex = colorHex
+
+        // Get max order and increment
+        let fetchRequest: NSFetchRequest<Workspace> = Workspace.fetchRequest()
+        fetchRequest.sortDescriptors = [NSSortDescriptor(keyPath: \Workspace.order, ascending: false)]
+        fetchRequest.fetchLimit = 1
+
+        if let lastWorkspace = try? viewContext.fetch(fetchRequest).first {
+            workspace.order = lastWorkspace.order + 1
+        } else {
+            workspace.order = 0
+        }
+
+        try viewContext.save()
+        return workspace
+    }
+
+    func deleteWorkspace(_ workspace: Workspace) throws {
+        viewContext.delete(workspace)
+        try viewContext.save()
+    }
+
+    func updateWorkspace(_ workspace: Workspace, name: String? = nil, colorHex: String? = nil) throws {
+        if let name = name {
+            workspace.name = name
+        }
+        if let colorHex = colorHex {
+            workspace.colorHex = colorHex
+        }
+        try viewContext.save()
+    }
+
+    // MARK: - Repository Operations
+
+    func addExistingRepository(path: String, workspace: Workspace) async throws -> Repository {
+        // Validate it's a git repository
+        guard try await gitService.isGitRepository(at: path) else {
+            throw GitError.notAGitRepository
+        }
+
+        // Get main repository path (in case this is a worktree)
+        let mainRepoPath = try await gitService.getMainRepositoryPath(at: path)
+
+        // Check if repository already exists
+        let fetchRequest: NSFetchRequest<Repository> = Repository.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "path == %@", mainRepoPath)
+
+        if let existing = try? viewContext.fetch(fetchRequest).first {
+            // Update workspace if different
+            existing.workspace = workspace
+            try viewContext.save()
+            return existing
+        }
+
+        // Create new repository
+        let repository = Repository(context: viewContext)
+        repository.id = UUID()
+        repository.path = mainRepoPath
+        repository.name = try await gitService.getRepositoryName(at: mainRepoPath)
+        repository.workspace = workspace
+        repository.lastUpdated = Date()
+
+        // Scan and add worktrees
+        try await scanWorktrees(for: repository)
+
+        try viewContext.save()
+        return repository
+    }
+
+    func cloneRepository(url: String, destinationPath: String, workspace: Workspace) async throws -> Repository {
+        // Clone the repository
+        try await gitService.clone(url: url, to: destinationPath)
+
+        // Add it as an existing repository
+        return try await addExistingRepository(path: destinationPath, workspace: workspace)
+    }
+
+    func deleteRepository(_ repository: Repository) throws {
+        viewContext.delete(repository)
+        try viewContext.save()
+    }
+
+    func refreshRepository(_ repository: Repository) async throws {
+        repository.lastUpdated = Date()
+        try await scanWorktrees(for: repository)
+        try viewContext.save()
+    }
+
+    // MARK: - Worktree Operations
+
+    func scanWorktrees(for repository: Repository) async throws {
+        let worktreeInfos = try await gitService.listWorktrees(at: repository.path!)
+
+        // Get existing worktrees
+        let existingWorktrees = (repository.worktrees as? Set<Worktree>) ?? []
+        var existingPaths = Set(existingWorktrees.map { $0.path! })
+
+        // Add or update worktrees
+        for info in worktreeInfos {
+            if let existing = existingWorktrees.first(where: { $0.path == info.path }) {
+                // Update existing
+                existing.branch = info.branch
+                existing.isPrimary = info.isPrimary
+                existingPaths.remove(info.path)
+            } else {
+                // Create new
+                let worktree = Worktree(context: viewContext)
+                worktree.id = UUID()
+                worktree.path = info.path
+                worktree.branch = info.branch
+                worktree.isPrimary = info.isPrimary
+                worktree.repository = repository
+            }
+        }
+
+        // Remove worktrees that no longer exist
+        for path in existingPaths {
+            if let worktree = existingWorktrees.first(where: { $0.path == path }) {
+                viewContext.delete(worktree)
+            }
+        }
+    }
+
+    func addWorktree(to repository: Repository, path: String, branch: String, createBranch: Bool, baseBranch: String? = nil) async throws -> Worktree {
+        guard let repoPath = repository.path else {
+            throw GitError.invalidPath
+        }
+
+        // Ensure .aizen directory exists and is ignored
+        let aizenDir = URL(fileURLWithPath: repoPath).appendingPathComponent(".aizen")
+        try? FileManager.default.createDirectory(at: aizenDir, withIntermediateDirectories: true)
+
+        // Add .aizen to .gitignore if not already there
+        let gitignorePath = URL(fileURLWithPath: repoPath).appendingPathComponent(".gitignore")
+        if FileManager.default.fileExists(atPath: gitignorePath.path) {
+            if let gitignoreContent = try? String(contentsOf: gitignorePath, encoding: .utf8) {
+                if !gitignoreContent.contains(".aizen") {
+                    let newContent = gitignoreContent + "\n.aizen/\n"
+                    try? newContent.write(to: gitignorePath, atomically: true, encoding: .utf8)
+                }
+            }
+        } else {
+            try? ".aizen/\n".write(to: gitignorePath, atomically: true, encoding: .utf8)
+        }
+
+        try await gitService.addWorktree(at: repoPath, path: path, branch: branch, createBranch: createBranch, baseBranch: baseBranch)
+
+        let worktree = Worktree(context: viewContext)
+        worktree.id = UUID()
+        worktree.path = path
+        worktree.branch = branch
+        worktree.isPrimary = false
+        worktree.repository = repository
+        worktree.lastAccessed = Date()
+
+        try viewContext.save()
+        return worktree
+    }
+
+    func hasUnsavedChanges(_ worktree: Worktree) async throws -> Bool {
+        guard let worktreePath = worktree.path else {
+            throw GitError.worktreeNotFound
+        }
+        return try await gitService.hasUnsavedChanges(at: worktreePath)
+    }
+
+    func deleteWorktree(_ worktree: Worktree, force: Bool = false) async throws {
+        guard let repository = worktree.repository,
+              let repoPath = repository.path,
+              let worktreePath = worktree.path else {
+            throw GitError.worktreeNotFound
+        }
+
+        try await gitService.removeWorktree(at: worktreePath, repoPath: repoPath, force: force)
+
+        viewContext.delete(worktree)
+        try viewContext.save()
+    }
+
+    func updateWorktreeAccess(_ worktree: Worktree) throws {
+        worktree.lastAccessed = Date()
+        try viewContext.save()
+    }
+
+    // MARK: - Branch Operations
+
+    func getBranches(for repository: Repository) async throws -> [BranchInfo] {
+        return try await gitService.listBranches(at: repository.path!, includeRemote: true)
+    }
+
+    func getWorktreeStatus(_ worktree: Worktree) async throws -> (branch: String, ahead: Int, behind: Int) {
+        guard let path = worktree.path else {
+            throw GitError.worktreeNotFound
+        }
+
+        let branch = try await gitService.getCurrentBranch(at: path)
+        let status = try await gitService.getBranchStatus(at: path)
+
+        return (branch, status.ahead, status.behind)
+    }
+
+    // MARK: - File System Operations
+
+    func openInFinder(_ path: String) {
+        let url = URL(fileURLWithPath: path)
+        NSWorkspace.shared.open(url)
+    }
+
+    func openInTerminal(_ path: String) {
+        let script = """
+        tell application "Terminal"
+            do script "cd '\(path)'"
+            activate
+        end tell
+        """
+
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            appleScript.executeAndReturnError(&error)
+        }
+    }
+
+    func openInEditor(_ path: String) {
+        let editor = UserDefaults.standard.string(forKey: "defaultEditor") ?? "code"
+
+        let task = Process()
+        task.launchPath = "/usr/bin/env"
+        task.arguments = [editor, path]
+
+        do {
+            try task.run()
+        } catch {
+            // Fallback to Finder if editor command fails
+            openInFinder(path)
+        }
+    }
+}

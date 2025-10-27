@@ -10,74 +10,95 @@ import CoreData
 
 struct ContentView: View {
     @Environment(\.managedObjectContext) private var viewContext
+    @StateObject private var repositoryManager: RepositoryManager
 
     @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \Item.timestamp, ascending: true)],
+        sortDescriptors: [NSSortDescriptor(keyPath: \Workspace.order, ascending: true)],
         animation: .default)
-    private var items: FetchedResults<Item>
+    private var workspaces: FetchedResults<Workspace>
+
+    @State private var selectedWorkspace: Workspace?
+    @State private var selectedRepository: Repository?
+    @State private var selectedWorktree: Worktree?
+    @State private var searchText = ""
+    @State private var showingAddRepository = false
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var previousWorktree: Worktree?
+
+    init(context: NSManagedObjectContext) {
+        _repositoryManager = StateObject(wrappedValue: RepositoryManager(viewContext: context))
+    }
 
     var body: some View {
-        NavigationView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp!, formatter: itemFormatter)")
-                    } label: {
-                        Text(item.timestamp!, formatter: itemFormatter)
-                    }
-                }
-                .onDelete(perform: deleteItems)
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            // Left sidebar - workspaces and repositories
+            WorkspaceSidebarView(
+                workspaces: Array(workspaces),
+                selectedWorkspace: $selectedWorkspace,
+                selectedRepository: $selectedRepository,
+                selectedWorktree: $selectedWorktree,
+                searchText: $searchText,
+                showingAddRepository: $showingAddRepository,
+                repositoryManager: repositoryManager
+            )
+            .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 300)
+        } content: {
+            // Middle panel - worktree list or detail
+            if let repository = selectedRepository {
+                WorktreeListView(
+                    repository: repository,
+                    selectedWorktree: $selectedWorktree,
+                    repositoryManager: repositoryManager
+                )
+                .navigationSplitViewColumnWidth(min: 250, ideal: 300, max: 400)
+            } else {
+                ContentUnavailableView(
+                    "Select a Repository",
+                    systemImage: "folder.badge.gearshape",
+                    description: Text("Choose a repository to view its worktrees")
+                )
+                .navigationSplitViewColumnWidth(min: 250, ideal: 300, max: 400)
             }
-            .toolbar {
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
+        } detail: {
+            // Right panel - worktree details
+            if let worktree = selectedWorktree {
+                WorktreeDetailView(
+                    worktree: worktree,
+                    repositoryManager: repositoryManager
+                )
+            } else {
+                ContentUnavailableView(
+                    "Select a Worktree",
+                    systemImage: "arrow.triangle.branch",
+                    description: Text("Choose a worktree to view details and actions")
+                )
             }
-            Text("Select an item")
         }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(context: viewContext)
-            newItem.timestamp = Date()
-
-            do {
-                try viewContext.save()
-            } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+        .sheet(isPresented: $showingAddRepository) {
+            if let workspace = selectedWorkspace ?? workspaces.first {
+                RepositoryAddSheet(
+                    workspace: workspace,
+                    repositoryManager: repositoryManager
+                )
             }
         }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            offsets.map { items[$0] }.forEach(viewContext.delete)
-
-            do {
-                try viewContext.save()
-            } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+        .onAppear {
+            if selectedWorkspace == nil {
+                selectedWorkspace = workspaces.first
+            }
+        }
+        .onChange(of: selectedWorktree) { oldValue, newValue in
+            if let newWorktree = newValue, previousWorktree != newWorktree {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    columnVisibility = .doubleColumn
+                }
+                previousWorktree = newWorktree
             }
         }
     }
 }
 
-private let itemFormatter: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.dateStyle = .short
-    formatter.timeStyle = .medium
-    return formatter
-}()
-
 #Preview {
-    ContentView().environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
+    ContentView(context: PersistenceController.preview.container.viewContext)
+        .environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
 }

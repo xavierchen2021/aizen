@@ -6,6 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		CC128B182EAF8DD600EA9A50 /* HighlightSwift in Frameworks */ = {isa = PBXBuildFile; productRef = CC128B172EAF8DD600EA9A50 /* HighlightSwift */; };
+		CC6CA52B2EA25D9C001CADD7 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = CCB04B722EA241B60007DBB1 /* SwiftTerm */; };
+		CC6CA52C2EA25D9D001CADD7 /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = CCB04B732EA241B60007DBB1 /* Markdown */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		CCB04B552EA241B50007DBB1 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +58,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CC128B182EAF8DD600EA9A50 /* HighlightSwift in Frameworks */,
+				CC6CA52B2EA25D9C001CADD7 /* SwiftTerm in Frameworks */,
+				CC6CA52C2EA25D9D001CADD7 /* Markdown in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +121,9 @@
 			);
 			name = aizen;
 			packageProductDependencies = (
+				CCB04B722EA241B60007DBB1 /* SwiftTerm */,
+				CCB04B732EA241B60007DBB1 /* Markdown */,
+				CC128B172EAF8DD600EA9A50 /* HighlightSwift */,
 			);
 			productName = aizen;
 			productReference = CCB04B422EA241B30007DBB1 /* aizen.app */;
@@ -195,6 +207,11 @@
 			);
 			mainGroup = CCB04B392EA241B30007DBB1;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				CCB04B712EA241B60007DBB1 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
+				CCB04B742EA241B60007DBB1 /* XCRemoteSwiftPackageReference "swift-markdown" */,
+				CC128B162EAF8DD600EA9A50 /* XCRemoteSwiftPackageReference "highlightswift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = CCB04B432EA241B30007DBB1 /* Products */;
 			projectDirPath = "";
@@ -394,15 +411,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = aizen/aizen.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = B4VFVW93QD;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -426,15 +445,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = aizen/aizen.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = B4VFVW93QD;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -573,6 +594,51 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		CC128B162EAF8DD600EA9A50 /* XCRemoteSwiftPackageReference "highlightswift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/appstefan/highlightswift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.9;
+			};
+		};
+		CCB04B712EA241B60007DBB1 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
+			};
+		};
+		CCB04B742EA241B60007DBB1 /* XCRemoteSwiftPackageReference "swift-markdown" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-markdown";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		CC128B172EAF8DD600EA9A50 /* HighlightSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CC128B162EAF8DD600EA9A50 /* XCRemoteSwiftPackageReference "highlightswift" */;
+			productName = HighlightSwift;
+		};
+		CCB04B722EA241B60007DBB1 /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CCB04B712EA241B60007DBB1 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			productName = SwiftTerm;
+		};
+		CCB04B732EA241B60007DBB1 /* Markdown */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CCB04B742EA241B60007DBB1 /* XCRemoteSwiftPackageReference "swift-markdown" */;
+			productName = Markdown;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = CCB04B3A2EA241B30007DBB1 /* Project object */;
 }

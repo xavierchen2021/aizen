@@ -14,15 +14,44 @@ struct PersistenceController {
     static let preview: PersistenceController = {
         let result = PersistenceController(inMemory: true)
         let viewContext = result.container.viewContext
-        for _ in 0..<10 {
-            let newItem = Item(context: viewContext)
-            newItem.timestamp = Date()
-        }
+
+        // Create sample workspaces
+        let personalWorkspace = Workspace(context: viewContext)
+        personalWorkspace.id = UUID()
+        personalWorkspace.name = "Personal"
+        personalWorkspace.order = 0
+
+        let workWorkspace = Workspace(context: viewContext)
+        workWorkspace.id = UUID()
+        workWorkspace.name = "Work"
+        workWorkspace.order = 1
+
+        // Create sample repository
+        let sampleRepo = Repository(context: viewContext)
+        sampleRepo.id = UUID()
+        sampleRepo.name = "sample-project"
+        sampleRepo.path = "/Users/sample/projects/sample-project"
+        sampleRepo.workspace = personalWorkspace
+        sampleRepo.lastUpdated = Date()
+
+        // Create sample worktrees
+        let mainWorktree = Worktree(context: viewContext)
+        mainWorktree.id = UUID()
+        mainWorktree.path = "/Users/sample/projects/sample-project"
+        mainWorktree.branch = "main"
+        mainWorktree.isPrimary = true
+        mainWorktree.repository = sampleRepo
+
+        let featureWorktree = Worktree(context: viewContext)
+        featureWorktree.id = UUID()
+        featureWorktree.path = "/Users/sample/projects/sample-project-feature"
+        featureWorktree.branch = "feature/new-ui"
+        featureWorktree.isPrimary = false
+        featureWorktree.repository = sampleRepo
+
         do {
             try viewContext.save()
         } catch {
-            // Replace this implementation with code to handle the error appropriately.
-            // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
             let nsError = error as NSError
             fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
         }
@@ -38,20 +67,33 @@ struct PersistenceController {
         }
         container.loadPersistentStores(completionHandler: { (storeDescription, error) in
             if let error = error as NSError? {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-
-                /*
-                 Typical reasons for an error here include:
-                 * The parent directory does not exist, cannot be created, or disallows writing.
-                 * The persistent store is not accessible, due to permissions or data protection when the device is locked.
-                 * The device is out of space.
-                 * The store could not be migrated to the current model version.
-                 Check the error message to determine what the actual problem was.
-                 */
                 fatalError("Unresolved error \(error), \(error.userInfo)")
             }
         })
         container.viewContext.automaticallyMergesChangesFromParent = true
+
+        // Create default workspace if none exists
+        if !inMemory {
+            createDefaultWorkspaceIfNeeded()
+        }
+    }
+
+    private func createDefaultWorkspaceIfNeeded() {
+        let fetchRequest: NSFetchRequest<Workspace> = Workspace.fetchRequest()
+        fetchRequest.fetchLimit = 1
+
+        do {
+            let count = try container.viewContext.count(for: fetchRequest)
+            if count == 0 {
+                let defaultWorkspace = Workspace(context: container.viewContext)
+                defaultWorkspace.id = UUID()
+                defaultWorkspace.name = "Default"
+                defaultWorkspace.order = 0
+
+                try container.viewContext.save()
+            }
+        } catch {
+            print("Failed to create default workspace: \(error)")
+        }
     }
 }
