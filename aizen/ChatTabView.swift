@@ -278,26 +278,6 @@ struct ChatSessionView: View {
             }
         }
         .focusedSceneValue(\.chatActions, ChatActions(cycleModeForward: cycleModeForward))
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                if let plan = currentAgentSession?.agentPlan {
-                    Button {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            showingAgentPlan.toggle()
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "list.bullet")
-                            Text("Plan")
-                                .font(.system(size: 13, weight: .medium))
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                    }
-                    .buttonStyle(.borderless)
-                }
-            }
-        }
         .onAppear {
             setupAgentSession()
         }
@@ -480,10 +460,18 @@ struct ChatSessionView: View {
                             }
                         }
                     } label: {
-                        Image(systemName: "cpu")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .contentShape(Rectangle())
+                        HStack(spacing: 6) {
+                            AgentIconView(agent: selectedAgent, size: 12)
+                            if let currentModel = agentSession.availableModels.first(where: { $0.modelId == agentSession.currentModelId }) {
+                                Text(currentModel.name)
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 8))
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
                     }
                     .menuStyle(.borderlessButton)
                     .buttonStyle(.plain)
@@ -555,30 +543,11 @@ struct ChatSessionView: View {
     }
 
     private func attachmentChip(for url: URL) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "doc.fill")
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-
-            Text(url.lastPathComponent)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-
-            Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    attachments.removeAll { $0 == url }
-                }
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+        AttachmentChipWithDelete(url: url) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                attachments.removeAll { $0 == url }
             }
-            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var canSend: Bool {
@@ -921,8 +890,7 @@ struct ChatSessionView: View {
                     Text(currentMode.name)
                         .font(.system(size: 12, weight: .medium))
                 }
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .semibold))
+             
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
@@ -1386,6 +1354,183 @@ struct AuthenticationSheet: View {
                     isAuthenticating = false
                     print("Authentication failed: \(error)")
                 }
+            }
+        }
+    }
+}
+
+// MARK: - Attachment Chip with Delete
+
+struct AttachmentChipWithDelete: View {
+    let url: URL
+    let onDelete: () -> Void
+
+    @State private var showingDetail = false
+    @State private var isHovering = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Button {
+                showingDetail = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: iconName)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+
+                    Text(fileName)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                }
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                onDelete()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .opacity(isHovering ? 1 : 0.6)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovering = hovering
+            }
+        }
+        .sheet(isPresented: $showingDetail) {
+            InputAttachmentDetailView(url: url)
+        }
+    }
+
+    private var iconName: String {
+        let ext = url.pathExtension.lowercased()
+        switch ext {
+        case "jpg", "jpeg", "png", "gif", "heic", "bmp", "tiff":
+            return "photo.fill"
+        case "pdf":
+            return "doc.text.fill"
+        case "txt", "md", "rtf":
+            return "doc.text"
+        case "mp3", "wav", "aiff", "m4a":
+            return "waveform"
+        case "mp4", "mov", "avi":
+            return "play.rectangle.fill"
+        case "zip", "tar", "gz":
+            return "doc.zipper"
+        default:
+            return "doc.fill"
+        }
+    }
+
+    private var fileName: String {
+        url.lastPathComponent
+    }
+}
+
+// MARK: - Input Attachment Detail View
+
+struct InputAttachmentDetailView: View {
+    let url: URL
+    @Environment(\.dismiss) var dismiss
+
+    @State private var fileContent: String?
+    @State private var image: NSImage?
+    @State private var fileSize: String = ""
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(url.lastPathComponent)
+                        .font(.headline)
+                    Text(fileSize)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding()
+            .background(.ultraThinMaterial)
+
+            Divider()
+
+            // Content
+            ScrollView {
+                Group {
+                    if let image = image {
+                        Image(nsImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity)
+                    } else if let content = fileContent {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(content)
+                                .font(.system(.body, design: .monospaced))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    } else {
+                        VStack(spacing: 12) {
+                            Image(systemName: "doc.fill")
+                                .font(.system(size: 48))
+                                .foregroundStyle(.secondary)
+
+                            Text("Preview not available")
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+
+                            Text(url.path)
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding()
+                    }
+                }
+                .padding()
+            }
+        }
+        .frame(width: 700, height: 500)
+        .onAppear {
+            loadFileContent()
+        }
+    }
+
+    private func loadFileContent() {
+        // Calculate file size
+        if let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+           let size = attributes[.size] as? Int64 {
+            fileSize = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+        }
+
+        // Try to load as image
+        if let loadedImage = NSImage(contentsOf: url) {
+            image = loadedImage
+            return
+        }
+
+        // Try to load as text
+        if let content = try? String(contentsOf: url, encoding: .utf8) {
+            // Limit content to first 10000 characters to avoid performance issues
+            fileContent = String(content.prefix(10000))
+            if content.count > 10000 {
+                fileContent! += "\n\n... (content truncated)"
             }
         }
     }

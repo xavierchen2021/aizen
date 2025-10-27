@@ -390,15 +390,16 @@ struct CodeBlockView: View {
                     CodeText(code)
                         .highlightLanguage(highlightLang)
                         .codeTextColors(.theme(.github))
-                        .padding(12)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     Text(code)
                         .font(.system(.body, design: .monospaced))
-                        .padding(12)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+            .frame(maxHeight: 400)
             .background(Color(nsColor: .textBackgroundColor))
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))

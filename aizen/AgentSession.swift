@@ -260,6 +260,10 @@ class AgentSession: ObservableObject, ACPClientDelegate {
         // Send to agent and wait for completion
         let promptResponse = try await client.sendPrompt(sessionId: sessionId, content: contentBlocks)
 
+        // Small delay to allow any in-flight message chunks to be processed
+        // This prevents race condition where completion arrives before final chunks
+        try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+
         // Mark the last incomplete agent message as complete
         if let lastIndex = messages.lastIndex(where: { $0.role == .agent && !$0.isComplete }) {
             var completedMessage = messages[lastIndex]
