@@ -1,6 +1,6 @@
 # Aizen
 
-A macOS developer tool for managing Git worktrees with integrated terminal and AI agent support.
+Manage multiple Git branches simultaneously with dedicated terminals and agents in parallel.
 
 ## Features
 
