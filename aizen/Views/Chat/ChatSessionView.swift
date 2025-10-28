@@ -460,16 +460,31 @@ struct ChatSessionView: View {
                     .help("Record voice message")
                     .transition(.opacity)
 
-                    Button(action: sendMessage) {
-                        Image(systemName: canSend ? "arrow.up.circle.fill" : "arrow.up.circle")
-                            .font(.system(size: 22, weight: .medium))
-                            .foregroundStyle(canSend ? Color.blue : Color.secondary.opacity(0.5))
-                            .contentShape(Rectangle())
+                    if isProcessing {
+                        Button(action: {
+                            Task {
+                                await currentAgentSession?.cancelCurrentPrompt()
+                            }
+                        }) {
+                            Image(systemName: "stop.circle.fill")
+                                .font(.system(size: 22, weight: .medium))
+                                .foregroundStyle(Color.red)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .transition(.opacity)
+                    } else {
+                        Button(action: sendMessage) {
+                            Image(systemName: canSend ? "arrow.up.circle.fill" : "arrow.up.circle")
+                                .font(.system(size: 22, weight: .medium))
+                                .foregroundStyle(canSend ? Color.blue : Color.secondary.opacity(0.5))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!canSend)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: canSend)
+                        .transition(.opacity)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(!canSend)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: canSend)
-                    .transition(.opacity)
                 }
             }
             .padding(.horizontal, 16)

@@ -49,8 +49,6 @@ struct ToolCallView: View {
                             .foregroundColor(.secondary)
                     }
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)

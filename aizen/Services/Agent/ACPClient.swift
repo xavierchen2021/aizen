@@ -419,6 +419,27 @@ actor ACPClient {
         }
     }
 
+    func sendCancelNotification(sessionId: SessionId) async throws {
+        guard process?.isRunning == true else {
+            throw ACPClientError.processNotRunning
+        }
+
+        struct CancelParams: Encodable {
+            let sessionId: SessionId
+        }
+
+        let params = CancelParams(sessionId: sessionId)
+        let paramsData = try encoder.encode(params)
+        let paramsValue = try decoder.decode(AnyCodable.self, from: paramsData)
+
+        let notification = JSONRPCNotification(
+            method: "session/cancel",
+            params: paramsValue
+        )
+
+        try await writeMessage(notification)
+    }
+
     func terminate() async {
         readTask?.cancel()
         readTask = nil

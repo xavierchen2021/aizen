@@ -247,6 +247,36 @@ class AgentSession: ObservableObject, ACPClientDelegate {
 //        }
     }
 
+    /// Cancel the current prompt turn
+    func cancelCurrentPrompt() async {
+        guard let sessionId = sessionId, isActive else {
+            return
+        }
+
+        guard let client = acpClient else {
+            return
+        }
+
+        do {
+            // Send cancel notification
+            try await client.sendCancelNotification(sessionId: sessionId)
+
+            // Add system message indicating cancellation
+            let cancelMessage = MessageItem(
+                id: UUID().uuidString,
+                role: .system,
+                content: "Agent stopped by user",
+                timestamp: Date()
+            )
+            messages.append(cancelMessage)
+
+            // Clear current thought
+            currentThought = nil
+        } catch {
+            print("Error cancelling prompt: \(error)")
+        }
+    }
+
     /// Create a resource content block from a file URL
     private func createResourceBlock(from url: URL) async throws -> ContentBlock {
         // Ensure we can access the file

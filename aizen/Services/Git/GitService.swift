@@ -277,6 +277,7 @@ actor GitService {
         for line in lines {
             let cleaned = line.trimmingCharacters(in: .whitespaces)
                 .replacingOccurrences(of: "* ", with: "")
+                .replacingOccurrences(of: "+ ", with: "")
                 .replacingOccurrences(of: "  ", with: " ")
 
             let components = cleaned.split(separator: " ", maxSplits: 2).map(String.init)

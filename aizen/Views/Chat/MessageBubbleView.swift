@@ -52,12 +52,10 @@ struct MessageBubbleView: View {
         VStack(alignment: alignment, spacing: 4) {
             if message.role == .agent, let name = agentName {
                 HStack(spacing: 4) {
-                    AgentIconView(agent: name, size: 14)
+                    AgentIconView(agent: name, size: 16)
                     Text(name.capitalized)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 4)
+                        .font(.system(size: 13, weight: .bold))
+                }.padding(.vertical, 4)
             }
 
             HStack {
@@ -70,7 +68,14 @@ struct MessageBubbleView: View {
                 }
 
                 VStack(alignment: message.role == .system ? .center : .leading, spacing: 6) {
-                    MessageContentView(content: message.content, isComplete: message.isComplete)
+                    if message.role == .system {
+                        Text(message.content)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+                            .multilineTextAlignment(.center)
+                    } else {
+                        MessageContentView(content: message.content, isComplete: message.isComplete)
+                    }
 
                     if message.contentBlocks.count > 1 {
                         let attachmentBlocks = Array(message.contentBlocks.dropFirst())
