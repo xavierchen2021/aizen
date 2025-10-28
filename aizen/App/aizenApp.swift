@@ -20,6 +20,12 @@ struct aizenApp: App {
     @AppStorage("terminalFontSize") private var terminalFontSize = 12.0
     @AppStorage("terminalThemeName") private var terminalThemeName = "Catppuccin Mocha"
 
+    init() {
+        // Set launch source so libghostty knows to remove LANGUAGE env var
+        // This makes terminal shells use system locale instead of macOS AppleLanguages
+        setenv("GHOSTTY_MAC_LAUNCH_SOURCE", "app", 1)
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView(context: persistenceController.container.viewContext)

@@ -39,6 +39,8 @@ struct WorktreeDetailView: View {
     var hasGitChanges: Bool {
         gitAdditions > 0 || gitDeletions > 0 || gitUntrackedFiles > 0
     }
+    
+    
 
     @ViewBuilder
     var contentView: some View {
@@ -60,7 +62,6 @@ struct WorktreeDetailView: View {
 
     @ToolbarContentBuilder
     var sessionToolbarItems: some ToolbarContent {
-      
 
         ToolbarItem(placement: .automatic) {
             SessionTabsScrollView(
@@ -170,10 +171,10 @@ struct WorktreeDetailView: View {
         guard let path = worktree.path else { return }
 
         do {
-            // Get numstat for additions/deletions
+            // Get numstat for additions/deletions (both staged and unstaged)
             let diffProcess = Process()
             diffProcess.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-            diffProcess.arguments = ["diff", "--numstat"]
+            diffProcess.arguments = ["diff", "--numstat", "HEAD"]
             diffProcess.currentDirectoryURL = URL(fileURLWithPath: path)
 
             let diffPipe = Pipe()
@@ -200,7 +201,7 @@ struct WorktreeDetailView: View {
                 }
             }
 
-            // Get untracked files count
+            // Get status for new/untracked files and staged additions
             let statusProcess = Process()
             statusProcess.executableURL = URL(fileURLWithPath: "/usr/bin/git")
             statusProcess.arguments = ["status", "--porcelain"]
@@ -215,9 +216,10 @@ struct WorktreeDetailView: View {
             let statusData = statusPipe.fileHandleForReading.readDataToEndOfFile()
             let statusOutput = String(data: statusData, encoding: .utf8) ?? ""
 
-            let untrackedCount = statusOutput.components(separatedBy: .newlines)
-                .filter { $0.hasPrefix("??") }
-                .count
+            let lines = statusOutput.components(separatedBy: .newlines)
+
+            // Count untracked files (??), added files (A ), and new files in index (AM, A )
+            let untrackedCount = lines.filter { $0.hasPrefix("??") || $0.hasPrefix("A ") || $0.hasPrefix("AM") }.count
 
             await MainActor.run {
                 gitAdditions = additions
@@ -894,12 +896,11 @@ struct GitStatusView: View {
                 .transition(.opacity)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .buttonStyle(.automatic)
         .animation(.easeInOut(duration: 0.2), value: additions)
         .animation(.easeInOut(duration: 0.2), value: deletions)
         .animation(.easeInOut(duration: 0.2), value: untrackedFiles)
-        }.frame(width: .infinity)
+      }
     }
 }
 
