@@ -264,7 +264,15 @@ struct ChatSessionView: View {
     private func performAgentSwitch(to newAgent: String) {
         session.agentName = newAgent
         session.title = newAgent.capitalized
-        try? viewContext.save()
+
+        session.objectWillChange.send()
+        worktree.objectWillChange.send()
+
+        do {
+            try viewContext.save()
+        } catch {
+            print("Failed to save agent switch: \(error)")
+        }
 
         if let sessionId = session.id {
             sessionManager.removeAgentSession(for: sessionId)

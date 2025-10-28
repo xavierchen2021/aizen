@@ -453,13 +453,21 @@ struct TerminalViewWrapper: NSViewRepresentable {
 
         // Set title change callback to update session title
         let sessionToUpdate = session
+        let worktreeToUpdate = worktree
         let moc = session.managedObjectContext
         terminalView.onTitleChange = { title in
             Task { @MainActor in
                 sessionToUpdate.title = title
-                // Force context to detect changes
-                moc?.refresh(sessionToUpdate, mergeChanges: true)
-                try? moc?.save()
+
+                // Notify observers explicitly
+                sessionToUpdate.objectWillChange.send()
+                worktreeToUpdate.objectWillChange.send()
+
+                do {
+                    try moc?.save()
+                } catch {
+                    print("Failed to save terminal title change: \(error)")
+                }
             }
         }
 
