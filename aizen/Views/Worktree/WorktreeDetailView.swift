@@ -20,7 +20,7 @@ struct WorktreeDetailView: View {
     @State private var gitUntrackedFiles = 0
     @State private var isLoadingGitStatus = false
     @State private var gitStatusTimer: Timer?
-    @State private var lastOpenedApp: String?
+    @State private var lastOpenedApp: DetectedApp?
 
     var chatSessions: [ChatSession] {
         let sessions = (worktree.chatSessions as? Set<ChatSession>) ?? []
@@ -32,22 +32,97 @@ struct WorktreeDetailView: View {
         return sessions.sorted { ($0.createdAt ?? Date()) < ($1.createdAt ?? Date()) }
     }
 
+    var hasActiveSessions: Bool {
+        (selectedTab == "chat" && !chatSessions.isEmpty) || (selectedTab == "terminal" && !terminalSessions.isEmpty)
+    }
+
+    var hasGitChanges: Bool {
+        gitAdditions > 0 || gitDeletions > 0 || gitUntrackedFiles > 0
+    }
+
+    @ViewBuilder
+    var contentView: some View {
+        Group {
+            if selectedTab == "chat" {
+                ChatTabView(
+                    worktree: worktree,
+                    selectedSessionId: $selectedChatSessionId
+                )
+            } else {
+                TerminalTabView(
+                    worktree: worktree,
+                    selectedSessionId: $selectedTerminalSessionId,
+                    repositoryManager: repositoryManager
+                )
+            }
+        }
+    }
+
+    @ToolbarContentBuilder
+    var sessionToolbarItems: some ToolbarContent {
+      
+
+        ToolbarItem(placement: .automatic) {
+            SessionTabsScrollView(
+                selectedTab: selectedTab,
+                chatSessions: chatSessions,
+                terminalSessions: terminalSessions,
+                selectedChatSessionId: $selectedChatSessionId,
+                selectedTerminalSessionId: $selectedTerminalSessionId,
+                onCloseChatSession: closeChatSession,
+                onCloseTerminalSession: closeTerminalSession
+            )
+        }
+
+        ToolbarItem(placement: .automatic) {
+            if selectedTab == "chat" {
+                Button {
+                    createNewChatSession()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 11))
+                }
+                .help("New chat session")
+            } else {
+                Button {
+                    createNewTerminalSession()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 11))
+                }
+                .help("New terminal session")
+            }
+        }
+
+    }
+
+    @ToolbarContentBuilder
+    var appAndGitToolbarItems: some ToolbarContent {
+        ToolbarItem {
+            OpenInAppButton(
+                lastOpenedApp: lastOpenedApp,
+                appDetector: appDetector,
+                onOpenInLastApp: openInLastApp,
+                onOpenInDetectedApp: openInDetectedApp
+            )
+        }
+        
+        ToolbarSpacer(.fixed)
+        
+        ToolbarItem(placement: .automatic) {
+            if hasGitChanges {
+                GitStatusView(
+                    additions: gitAdditions,
+                    deletions: gitDeletions,
+                    untrackedFiles: gitUntrackedFiles
+                )
+            }
+        }
+    }
+
     var body: some View {
         NavigationStack {
-            Group {
-                if selectedTab == "chat" {
-                    ChatTabView(
-                        worktree: worktree,
-                        selectedSessionId: $selectedChatSessionId
-                    )
-                } else {
-                    TerminalTabView(
-                        worktree: worktree,
-                        selectedSessionId: $selectedTerminalSessionId,
-                        repositoryManager: repositoryManager
-                    )
-                }
-            }
+            contentView
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle(worktree.branch ?? "Worktree")
             .toolbarBackground(.visible, for: .windowToolbar)
@@ -60,185 +135,13 @@ struct WorktreeDetailView: View {
                     .pickerStyle(.segmented)
                 }
 
-                ToolbarItem(placement: .automatic) {
-                    Spacer()
+                if hasActiveSessions {
+                    sessionToolbarItems
                 }
-
-                ToolbarItemGroup(placement: .automatic) {
-                    if selectedTab == "chat" && !chatSessions.isEmpty {
-                        ForEach(chatSessions) { session in
-                            SessionTabButton(
-                                isSelected: selectedChatSessionId == session.id,
-                                action: { selectedChatSessionId = session.id }
-                            ) {
-                                HStack(spacing: 6) {
-                                    AgentIconView(agent: session.agentName ?? "claude", size: 14)
-
-                                    Text(session.title ?? session.agentName?.capitalized ?? "Chat")
-                                        .font(.callout)
-
-                                    Button {
-                                        closeChatSession(session)
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .font(.system(size: 10))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .buttonStyle(.borderless)
-                                }
-                            }
-                        }
-                    } else if selectedTab == "terminal" && !terminalSessions.isEmpty {
-                        ForEach(terminalSessions) { session in
-                            SessionTabButton(
-                                isSelected: selectedTerminalSessionId == session.id,
-                                action: { selectedTerminalSessionId = session.id }
-                            ) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "terminal")
-                                        .font(.system(size: 12))
-                                    Text(session.title ?? "Terminal")
-                                        .font(.callout)
-
-                                    Button {
-                                        closeTerminalSession(session)
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .font(.system(size: 10))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .buttonStyle(.borderless)
-                                }
-                            }
-                        }
-                    }
-                }
-        
-
-                ToolbarItem(placement: .automatic) {
-                    if selectedTab == "chat" {
-                        if !chatSessions.isEmpty {
-                            Button {
-                                createNewChatSession()
-                            } label: {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 11))
-                            }
-                            .help("New chat session")
-                        }
-                    } else {
-                        if !terminalSessions.isEmpty {
-                            Button {
-                                createNewTerminalSession()
-                            } label: {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 11))
-                            }
-                            .help("New terminal session")
-                        }
-                    }
-                }
-
-                ToolbarItem(placement: .automatic) {
-                    Spacer()
-                }
-
-    
-              
                 
+                ToolbarSpacer()
 
-                ToolbarItemGroup(placement: .automatic) {
-                    HStack(spacing: 0) {
-                        Button {
-                            openInLastApp()
-                        } label: {
-                            Image(systemName: "arrow.up.forward.app")
-                                .font(.system(size: 11))
-                        }
-                        
-                        .help(lastOpenedApp ?? "Open in app")
-
-                        Divider()
-                            .frame(height: 16)
-
-                        Menu {
-                            // System apps
-                            if let finder = appDetector.getApps(for: .finder).first {
-                                Button {
-                                    openInDetectedApp(finder)
-                                } label: {
-                                    AppMenuLabel(app: finder)
-                                }
-                            }
-
-                            // Terminals
-                            let terminals = appDetector.getTerminals()
-                            if !terminals.isEmpty {
-                                Divider()
-                                ForEach(terminals) { app in
-                                    Button {
-                                        openInDetectedApp(app)
-                                    } label: {
-                                        AppMenuLabel(app: app)
-                                    }
-                                }
-                            }
-
-                            // Editors
-                            let editors = appDetector.getEditors()
-                            if !editors.isEmpty {
-                                Divider()
-                                ForEach(editors) { app in
-                                    Button {
-                                        openInDetectedApp(app)
-                                    } label: {
-                                        AppMenuLabel(app: app)
-                                    }
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 9))
-                        }
-                        .menuIndicator(.hidden)
-                        .fixedSize()
-                    }
-                    
-                    HStack(spacing: 8) {
-                        if gitAdditions > 0 {
-                            Text("+\(gitAdditions)")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(.green)
-                                .transition(.opacity)
-                        }
-
-                        if gitDeletions > 0 {
-                            Text("-\(gitDeletions)")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(.red)
-                                .transition(.opacity)
-                        }
-
-                        if gitUntrackedFiles > 0 {
-                            HStack(spacing: 4) {
-                                Image(systemName: "questionmark.circle.fill")
-                                    .font(.system(size: 10))
-                                Text("\(gitUntrackedFiles)")
-                                    .font(.system(size: 11, weight: .medium))
-                            }
-                            .foregroundStyle(.orange)
-                            .transition(.opacity)
-                        }
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .opacity((gitAdditions > 0 || gitDeletions > 0 || gitUntrackedFiles > 0) ? 1 : 0)
-                    .animation(.easeInOut(duration: 0.2), value: gitAdditions)
-                    .animation(.easeInOut(duration: 0.2), value: gitDeletions)
-                    .animation(.easeInOut(duration: 0.2), value: gitUntrackedFiles)
-                    .frame(width: .infinity)
-                    
-                }
+                appAndGitToolbarItems
             }
             .task {
                 await loadGitStatus()
@@ -384,64 +287,18 @@ struct WorktreeDetailView: View {
 
     private func openInLastApp() {
         guard let app = lastOpenedApp else {
-            openInApp("Terminal")
+            // Open in Finder by default
+            if let finder = appDetector.getApps(for: .finder).first {
+                openInDetectedApp(finder)
+            }
             return
         }
-        openInApp(app)
-    }
-
-    private func openInApp(_ appName: String) {
-        guard let path = worktree.path else { return }
-
-        lastOpenedApp = appName
-
-        switch appName {
-        case "Terminal":
-            repositoryManager.openInTerminal(path)
-        case "Finder":
-            repositoryManager.openInFinder(path)
-        case "Xcode":
-            openWithApplication(path: path, applicationName: "Xcode")
-        case "VS Code":
-            openWithApplication(path: path, applicationName: "Visual Studio Code")
-        case "Cursor":
-            openWithApplication(path: path, applicationName: "Cursor")
-        default:
-            repositoryManager.openInEditor(path)
-        }
-    }
-
-    private func openWithApplication(path: String, applicationName: String) {
-        let pathURL = URL(fileURLWithPath: path)
-        let workspace = NSWorkspace.shared
-
-        if let appURL = workspace.urlForApplication(withBundleIdentifier: bundleIdentifier(for: applicationName))
-            ?? workspace.urlForApplication(toOpen: pathURL) {
-            let configuration = NSWorkspace.OpenConfiguration()
-            workspace.open([pathURL], withApplicationAt: appURL, configuration: configuration) { _, error in
-                if let error = error {
-                    print("Failed to open \(path) with \(applicationName): \(error)")
-                }
-            }
-        }
-    }
-
-    private func bundleIdentifier(for appName: String) -> String {
-        switch appName {
-        case "Xcode":
-            return "com.apple.dt.Xcode"
-        case "Visual Studio Code":
-            return "com.microsoft.VSCode"
-        case "Cursor":
-            return "com.todesktop.230313mzl4w4u92"
-        default:
-            return ""
-        }
+        openInDetectedApp(app)
     }
 
     private func openInDetectedApp(_ app: DetectedApp) {
         guard let path = worktree.path else { return }
-        lastOpenedApp = app.name
+        lastOpenedApp = app
         appDetector.openPath(path, with: app)
     }
 
@@ -784,12 +641,24 @@ struct ActionButton: View {
 struct AppMenuLabel: View {
     let app: DetectedApp
 
+    private func resizedIcon(_ image: NSImage, size: CGSize) -> NSImage {
+        let newImage = NSImage(size: size)
+        newImage.lockFocus()
+        image.draw(
+            in: NSRect(origin: .zero, size: size),
+            from: NSRect(origin: .zero, size: image.size),
+            operation: .sourceOver,
+            fraction: 1.0
+        )
+        newImage.unlockFocus()
+        return newImage
+    }
+
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             if let icon = app.icon {
-                Image(nsImage: icon)
-                    .resizable()
-                    .frame(width: 16, height: 16)
+                Image(nsImage: resizedIcon(icon, size: CGSize(width: 16, height: 16)))
+                    .renderingMode(.original)
             }
             Text(app.name)
         }
@@ -817,23 +686,220 @@ struct SessionTabButton<Content: View>: View {
         self.action = action
         self.content = content()
     }
-    
+
 
     var body: some View {
         Button(action: action) {
             content
                 .padding(6)
                 .background(
-                    (isSelected && !isHovering) ?
-                    Color(nsColor: .separatorColor) : Color.clear,
+                    isSelected ?
+                    Color(nsColor: .separatorColor) :
+                    (isHovering ? Color(nsColor: .separatorColor).opacity(0.5) : Color.clear),
                     in: Capsule()
                 )
-                
         }
-        .buttonStyle(.automatic)
-       
+        .buttonStyle(.plain)
         .onHover { hovering in
             isHovering = hovering
         }
     }
 }
+
+// MARK: - Session Tabs ScrollView
+
+struct SessionTabsScrollView: View {
+    let selectedTab: String
+    let chatSessions: [ChatSession]
+    let terminalSessions: [TerminalSession]
+    @Binding var selectedChatSessionId: UUID?
+    @Binding var selectedTerminalSessionId: UUID?
+    let onCloseChatSession: (ChatSession) -> Void
+    let onCloseTerminalSession: (TerminalSession) -> Void
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    if selectedTab == "chat" && !chatSessions.isEmpty {
+                        ForEach(chatSessions) { session in
+                            SessionTabButton(
+                                isSelected: selectedChatSessionId == session.id,
+                                action: { selectedChatSessionId = session.id }
+                            ) {
+                                HStack(spacing: 6) {
+                                    AgentIconView(agent: session.agentName ?? "claude", size: 14)
+
+                                    Text(session.title ?? session.agentName?.capitalized ?? "Chat")
+                                        .font(.callout)
+
+                                    Button {
+                                        onCloseChatSession(session)
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 10))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .buttonStyle(.borderless)
+                                }
+                            }
+                        }
+                    } else if selectedTab == "terminal" && !terminalSessions.isEmpty {
+                        ForEach(terminalSessions) { session in
+                            SessionTabButton(
+                                isSelected: selectedTerminalSessionId == session.id,
+                                action: { selectedTerminalSessionId = session.id }
+                            ) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "terminal")
+                                        .font(.system(size: 12))
+                                    Text(session.title ?? "Terminal")
+                                        .font(.callout)
+
+                                    Button {
+                                        onCloseTerminalSession(session)
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 10))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .buttonStyle(.borderless)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 6)
+            }
+            .frame(maxWidth: 600)
+        }
+        .frame(maxWidth: 600)
+    }
+}
+
+// MARK: - Open In App Button
+
+struct OpenInAppButton: View {
+    let lastOpenedApp: DetectedApp?
+    @ObservedObject var appDetector: AppDetector
+    let onOpenInLastApp: () -> Void
+    let onOpenInDetectedApp: (DetectedApp) -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Button {
+                onOpenInLastApp()
+            } label: {
+                if let app = lastOpenedApp {
+                    AppMenuLabel(app: app)
+                } else if let finder = appDetector.getApps(for: .finder).first {
+                    AppMenuLabel(app: finder)
+                } else {
+                    Image(systemName: "arrow.up.forward.app")
+                        .font(.system(size: 11))
+                }
+            }
+            .buttonStyle(.borderless)
+            .padding(8)
+            .help(lastOpenedApp?.name ?? "Open in Finder")
+
+            Divider()
+                .frame(height: 16)
+
+            Menu {
+                if let finder = appDetector.getApps(for: .finder).first {
+                    Button {
+                        onOpenInDetectedApp(finder)
+                    } label: {
+                        AppMenuLabel(app: finder)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                let terminals = appDetector.getTerminals()
+                if !terminals.isEmpty {
+                    Divider()
+                    ForEach(terminals) { app in
+                        Button {
+                            onOpenInDetectedApp(app)
+                        } label: {
+                            AppMenuLabel(app: app)
+                                .imageScale(.small)
+                        }.buttonStyle(.borderless)
+    
+                    }
+                }
+
+                let editors = appDetector.getEditors()
+                if !editors.isEmpty {
+                    Divider()
+                    ForEach(editors) { app in
+                        Button {
+                            onOpenInDetectedApp(app)
+                        } label: {
+                            AppMenuLabel(app: app)
+                                .imageScale(.small)
+                        }
+           
+                    }
+                }
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8))
+            }
+            .buttonStyle(.borderless)
+            .padding(8)
+            .imageScale(.small)
+            .menuIndicator(.hidden)
+            .fixedSize()
+        }
+    }
+}
+
+// MARK: - Git Status View
+
+struct GitStatusView: View {
+    let additions: Int
+    let deletions: Int
+    let untrackedFiles: Int
+
+    var body: some View {
+        Button {
+            print("git status")
+        } label: {
+        
+        HStack(spacing: 8) {
+            if additions > 0 {
+                Text("+\(additions)")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.green)
+                    .transition(.opacity)
+            }
+
+            if deletions > 0 {
+                Text("-\(deletions)")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.red)
+                    .transition(.opacity)
+            }
+
+            if untrackedFiles > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: "questionmark.circle.fill")
+                        .font(.system(size: 10))
+                    Text("\(untrackedFiles)")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .foregroundStyle(.orange)
+                .transition(.opacity)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .animation(.easeInOut(duration: 0.2), value: additions)
+        .animation(.easeInOut(duration: 0.2), value: deletions)
+        .animation(.easeInOut(duration: 0.2), value: untrackedFiles)
+        }.frame(width: .infinity)
+    }
+}
+
