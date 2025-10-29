@@ -18,6 +18,7 @@ struct WorktreeCreateSheet: View {
     @State private var isLoadingBranches = true
     @State private var isProcessing = false
     @State private var errorMessage: String?
+    @State private var validationWarning: String?
 
     private var currentBranch: String {
         // Get main branch from repository worktrees
@@ -28,6 +29,10 @@ struct WorktreeCreateSheet: View {
     private var existingWorktreeNames: [String] {
         let worktrees = (repository.worktrees as? Set<Worktree>) ?? []
         return worktrees.compactMap { $0.branch }
+    }
+
+    private var existingBranchNames: [String] {
+        branches.map { $0.name }
     }
 
     var body: some View {
@@ -74,12 +79,25 @@ struct WorktreeCreateSheet: View {
                             if slugified != newValue {
                                 worktreeName = slugified
                             }
+
+                            // Validate branch name
+                            validateBranchName()
                         }
                         .onSubmit {
-                            if !worktreeName.isEmpty {
+                            if !worktreeName.isEmpty && validationWarning == nil {
                                 createWorktree()
                             }
                         }
+
+                    if let warning = validationWarning {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.caption)
+                            Text(warning)
+                                .font(.caption)
+                        }
+                        .foregroundStyle(.orange)
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -105,12 +123,21 @@ struct WorktreeCreateSheet: View {
                 }
 
                 if let error = errorMessage {
-                    Text(error)
-                        .font(.callout)
-                        .foregroundStyle(.red)
-                        .padding()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.circle.fill")
+                                .font(.callout)
+                            Text("Worktree Creation Failed")
+                                .font(.callout)
+                                .fontWeight(.semibold)
+                        }
+                        Text(error)
+                            .font(.system(.caption, design: .monospaced))
+                    }
+                    .foregroundStyle(.red)
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
                 }
             }
             .padding()
@@ -133,7 +160,7 @@ struct WorktreeCreateSheet: View {
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
-                .disabled(isProcessing || worktreeName.isEmpty)
+                .disabled(isProcessing || worktreeName.isEmpty || validationWarning != nil)
             }
             .padding()
         }
@@ -172,10 +199,26 @@ struct WorktreeCreateSheet: View {
     }
 
     private func generateRandomName() {
-        worktreeName = WorkspaceNameGenerator.generateUniqueName(excluding: existingWorktreeNames)
+        // Combine both worktree names and branch names to avoid conflicts
+        let excludedNames = Set(existingWorktreeNames + existingBranchNames)
+        worktreeName = WorkspaceNameGenerator.generateUniqueName(excluding: Array(excludedNames))
             .lowercased()
             .replacingOccurrences(of: " ", with: "-")
             .replacingOccurrences(of: "'", with: "")
+        validateBranchName()
+    }
+
+    private func validateBranchName() {
+        guard !worktreeName.isEmpty else {
+            validationWarning = nil
+            return
+        }
+
+        if existingBranchNames.contains(worktreeName) {
+            validationWarning = "Branch '\(worktreeName)' already exists"
+        } else {
+            validationWarning = nil
+        }
     }
 
     private func createWorktree() {
@@ -186,6 +229,12 @@ struct WorktreeCreateSheet: View {
         }
         guard let repoPath = repository.path else {
             errorMessage = "Invalid repository path"
+            return
+        }
+
+        // Check if branch name already exists
+        if existingBranchNames.contains(worktreeName) {
+            errorMessage = "Branch '\(worktreeName)' already exists. Choose a different name."
             return
         }
 
@@ -213,7 +262,11 @@ struct WorktreeCreateSheet: View {
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = error.localizedDescription
+                    if let gitError = error as? GitError {
+                        errorMessage = gitError.errorDescription
+                    } else {
+                        errorMessage = error.localizedDescription
+                    }
                     isProcessing = false
                 }
             }

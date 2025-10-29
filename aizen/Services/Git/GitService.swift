@@ -211,12 +211,15 @@ actor GitService {
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
 
+        let stdout = String(data: data, encoding: .utf8) ?? ""
+        let stderr = String(data: errorData, encoding: .utf8) ?? ""
+
         if process.terminationStatus != 0 {
-            let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown error"
+            let errorMessage = stderr.isEmpty ? "Unknown error" : stderr
             throw GitError.commandFailed(message: errorMessage)
         }
 
-        return String(data: data, encoding: .utf8) ?? ""
+        return stdout
     }
 
     private func parseWorktreeList(_ output: String, repositoryPath: String) -> [WorktreeInfo] {
