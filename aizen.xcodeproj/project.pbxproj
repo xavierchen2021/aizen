@@ -10,7 +10,6 @@
 		CC1234572EA241B30007DBB1 /* libghostty.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CC1234562EA241B30007DBB1 /* libghostty.a */; };
 		CC128B182EAF8DD600EA9A50 /* HighlightSwift in Frameworks */ = {isa = PBXBuildFile; productRef = CC128B172EAF8DD600EA9A50 /* HighlightSwift */; };
 		CC128B1B2EAF8DD600EA9A50 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = CC128B1A2EAF8DD600EA9A50 /* Sparkle */; };
-		CC6CA52B2EA25D9C001CADD7 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = CCB04B722EA241B60007DBB1 /* SwiftTerm */; };
 		CC6CA52C2EA25D9D001CADD7 /* Markdown in Frameworks */ = {isa = PBXBuildFile; productRef = CCB04B732EA241B60007DBB1 /* Markdown */; };
 /* End PBXBuildFile section */
 
@@ -63,7 +62,6 @@
 			files = (
 				CC1234572EA241B30007DBB1 /* libghostty.a in Frameworks */,
 				CC128B182EAF8DD600EA9A50 /* HighlightSwift in Frameworks */,
-				CC6CA52B2EA25D9C001CADD7 /* SwiftTerm in Frameworks */,
 				CC6CA52C2EA25D9D001CADD7 /* Markdown in Frameworks */,
 				CC128B1B2EAF8DD600EA9A50 /* Sparkle in Frameworks */,
 			);
@@ -135,7 +133,6 @@
 			);
 			name = aizen;
 			packageProductDependencies = (
-				CCB04B722EA241B60007DBB1 /* SwiftTerm */,
 				CCB04B732EA241B60007DBB1 /* Markdown */,
 				CC128B172EAF8DD600EA9A50 /* HighlightSwift */,
 				CC128B1A2EAF8DD600EA9A50 /* Sparkle */,
@@ -223,7 +220,6 @@
 			mainGroup = CCB04B392EA241B30007DBB1;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				CCB04B712EA241B60007DBB1 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
 				CCB04B742EA241B60007DBB1 /* XCRemoteSwiftPackageReference "swift-markdown" */,
 				CC128B162EAF8DD600EA9A50 /* XCRemoteSwiftPackageReference "highlightswift" */,
 				CC128B192EAF8DD600EA9A50 /* XCRemoteSwiftPackageReference "Sparkle" */,
@@ -668,14 +664,6 @@
 				minimumVersion = 2.0.0;
 			};
 		};
-		CCB04B712EA241B60007DBB1 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.0.0;
-			};
-		};
 		CCB04B742EA241B60007DBB1 /* XCRemoteSwiftPackageReference "swift-markdown" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/apple/swift-markdown";
@@ -696,11 +684,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = CC128B192EAF8DD600EA9A50 /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
-		};
-		CCB04B722EA241B60007DBB1 /* SwiftTerm */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = CCB04B712EA241B60007DBB1 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
-			productName = SwiftTerm;
 		};
 		CCB04B732EA241B60007DBB1 /* Markdown */ = {
 			isa = XCSwiftPackageProductDependency;

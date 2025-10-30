@@ -1,5 +1,5 @@
 {
-  "originHash" : "350688a0824fc50c78ae643ca4f6a678e512fabb4fd603d01a7d9b4e88354b19",
+  "originHash" : "3792aa602d55aafba352b95400f6d47ecdc560ac2d40f1c5f1744301293844b9",
   "pins" : [
     {
       "identity" : "highlightswift",
@@ -20,15 +20,6 @@
       }
     },
     {
-      "identity" : "swift-argument-parser",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/apple/swift-argument-parser",
-      "state" : {
-        "revision" : "cdd0ef3755280949551dc26dee5de9ddeda89f54",
-        "version" : "1.6.2"
-      }
-    },
-    {
       "identity" : "swift-cmark",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swiftlang/swift-cmark.git",
@@ -44,15 +35,6 @@
       "state" : {
         "branch" : "main",
         "revision" : "0186e808140db5eb5ba9b052e86fbe15b88f7975"
-      }
-    },
-    {
-      "identity" : "swiftterm",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/migueldeicaza/SwiftTerm",
-      "state" : {
-        "revision" : "0b8d99bd19b694df44e1ccaa3891309719d34330",
-        "version" : "1.5.1"
       }
     }
   ],
