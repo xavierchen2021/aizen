@@ -159,7 +159,7 @@ extension Ghostty {
             Ghostty.logger.info("Ghostty app initialized successfully")
         }
 
-        nonisolated deinit {
+        deinit {
             // Note: Cannot access @MainActor isolated properties in deinit
             // The app will be freed when the instance is deallocated
             // For proper cleanup, call a cleanup method before deinitialization

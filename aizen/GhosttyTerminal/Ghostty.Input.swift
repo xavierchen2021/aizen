@@ -32,7 +32,7 @@ extension Ghostty {
         case GHOSTTY_TRIGGER_PHYSICAL:
             // Only functional keys can be converted to a KeyboardShortcut. Other physical
             // mappings cannot because KeyboardShortcut in Swift is inherently layout-dependent.
-            if let equiv = Self.keyToEquivalent[trigger.key.physical] {
+            if let equiv = Self.keyToEquivalent[trigger.key.physical.rawValue] {
                 key = equiv
             } else {
                 return nil
@@ -87,7 +87,7 @@ extension Ghostty {
     /// A map from the Ghostty key enum to the keyEquivalent string for shortcuts. Note that
     /// not all ghostty key enum values are represented here because not all of them can be
     /// mapped to a KeyEquivalent.
-    static let keyToEquivalent: [ghostty_input_key_e : KeyEquivalent] = [
+    static let keyToEquivalent: [UInt32 : KeyEquivalent] = [
         // Function keys
         GHOSTTY_KEY_ARROW_UP: .upArrow,
         GHOSTTY_KEY_ARROW_DOWN: .downArrow,

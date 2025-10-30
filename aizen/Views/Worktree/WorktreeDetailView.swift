@@ -107,9 +107,11 @@ struct WorktreeDetailView: View {
                 onOpenInDetectedApp: openInDetectedApp
             )
         }
-        
-        ToolbarSpacer(.fixed)
-        
+
+        if #available(macOS 26.0, *) {
+            ToolbarSpacer(.fixed)
+        }
+
         ToolbarItem(placement: .automatic) {
             if hasGitChanges {
                 GitStatusView(
@@ -139,8 +141,6 @@ struct WorktreeDetailView: View {
                 if hasActiveSessions {
                     sessionToolbarItems
                 }
-                
-                ToolbarSpacer()
 
                 appAndGitToolbarItems
             }

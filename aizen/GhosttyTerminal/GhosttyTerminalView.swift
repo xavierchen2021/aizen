@@ -77,7 +77,7 @@ class GhosttyTerminalView: NSView {
         fatalError("init(coder:) not supported")
     }
 
-    nonisolated deinit {
+    deinit {
         // Surface cleanup happens via Surface's deinit
         // Note: Cannot access @MainActor properties in deinit
         // Tracking areas are automatically cleaned up by NSView

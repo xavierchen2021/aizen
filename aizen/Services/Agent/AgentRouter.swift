@@ -30,6 +30,7 @@ class AgentRouter: ObservableObject {
         activeSessions["gemini"] = AgentSession(agentName: "gemini")
     }
 
+    @MainActor
     func parseAndRoute(message: String) -> (agentName: String, cleanedMessage: String) {
         let pattern = "^@(\\w+)\\s+"
         guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
