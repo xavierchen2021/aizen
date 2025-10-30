@@ -14,20 +14,16 @@ on:
         default: 'Bug fixes and improvements'
 
 env:
-  XCODE_VERSION: '16.0'
   SCHEME: 'aizen'
   CONFIGURATION: 'Release'
 
 jobs:
   build-and-release:
-    runs-on: macos-latest
+    runs-on: macos-26
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Select Xcode version
-        run: sudo xcode-select -s /Applications/Xcode_${{ env.XCODE_VERSION }}.app/Contents/Developer
 
       - name: Show Xcode version
         run: xcodebuild -version
@@ -190,7 +186,7 @@ jobs:
                          length="$DMG_SIZE"
                          type="application/octet-stream"
                          sparkle:edSignature="${{ env.SPARKLE_SIGNATURE }}" />
-              <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+              <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
           </item>
           EOF
 

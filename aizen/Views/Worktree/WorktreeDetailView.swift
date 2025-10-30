@@ -110,6 +110,10 @@ struct WorktreeDetailView: View {
 
         if #available(macOS 26.0, *) {
             ToolbarSpacer(.fixed)
+        } else {
+            ToolbarItem(placement: .automatic) {
+                Spacer().fixedSize()
+            }
         }
 
         ToolbarItem(placement: .automatic) {
@@ -136,6 +140,15 @@ struct WorktreeDetailView: View {
                         Label(String(localized: "worktree.session.terminal"), systemImage: "terminal").tag("terminal")
                     }
                     .pickerStyle(.segmented)
+                }
+                
+                
+                if #available(macOS 26.0, *) {
+                    ToolbarSpacer()
+                } else {
+                    ToolbarItem(placement: .automatic) {
+                        Spacer().fixedSize()
+                    }
                 }
 
                 if hasActiveSessions {
