@@ -2,6 +2,8 @@
 
 Manage multiple Git branches simultaneously with dedicated terminals and agents in parallel.
 
+![Aizen Demo](https://r2.aizen.win/demo.png)
+
 ## Features
 
 - **Workspace Management**: Organize repositories into workspaces
