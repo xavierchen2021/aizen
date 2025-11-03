@@ -15,6 +15,11 @@ struct TerminalSettingsView: View {
     @State private var availableFonts: [String] = []
     @State private var themeNames: [String] = []
 
+    private static var themesPath: String? {
+        guard let resourcePath = Bundle.main.resourcePath else { return nil }
+        return (resourcePath as NSString).appendingPathComponent("ghostty/themes")
+    }
+
     private func loadSystemFonts() -> [String] {
         let fontManager = NSFontManager.shared
         let monospaceFonts = fontManager.availableFontFamilies.filter { familyName in
@@ -25,18 +30,22 @@ struct TerminalSettingsView: View {
     }
 
     private func loadThemeNames() -> [String] {
-        // Just list theme file names - no parsing needed
-        guard let resourcePath = Bundle.main.resourcePath else { return [] }
-        guard let allFiles = try? FileManager.default.contentsOfDirectory(atPath: resourcePath) else {
+        guard let themesPath = Self.themesPath else {
+            print("Error: Unable to locate themes directory")
             return []
         }
 
-        // Filter for theme files (no extension, not directories)
-        return allFiles.filter { file in
-            let path = (resourcePath as NSString).appendingPathComponent(file)
+        guard let themeFiles = try? FileManager.default.contentsOfDirectory(atPath: themesPath) else {
+            print("Error: Unable to read themes from \(themesPath)")
+            return []
+        }
+
+        // Filter out directories and hidden files
+        return themeFiles.filter { file in
+            let path = (themesPath as NSString).appendingPathComponent(file)
             var isDir: ObjCBool = false
             FileManager.default.fileExists(atPath: path, isDirectory: &isDir)
-            return !isDir.boolValue && !file.contains(".")
+            return !isDir.boolValue && !file.hasPrefix(".")
         }.sorted()
     }
 
