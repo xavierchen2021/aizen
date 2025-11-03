@@ -92,49 +92,33 @@ class AgentRegistry {
     func discoverAgents() -> [String: String] {
         var discovered: [String: String] = [:]
 
-        let searchPaths = [
-            "/usr/local/bin",
-            "/opt/homebrew/bin",
-            "/usr/bin",
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/bin").path,
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("bin").path,
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cargo/bin").path,
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".npm-global/bin").path,
-            "/usr/local/lib/node_modules/.bin",
-        ]
-
         for agentName in defaultKnownAgents {
-            if let config = agentConfigs[agentName] {
-                for executableName in config.executableNames {
-                    if let path = findExecutable(named: executableName, in: searchPaths) {
-                        discovered[agentName] = path
-                        break // Use first found
-                    }
-                }
-            } else {
-                // Fallback: try agent name directly
-                if let path = findExecutable(named: agentName, in: searchPaths) {
-                    discovered[agentName] = path
-                }
+            if let path = discoverAgent(named: agentName) {
+                discovered[agentName] = path
             }
         }
 
         return discovered
     }
 
-    /// Auto-discover and update agent paths for missing agents
-    func autoDiscover() {
-        let currentPaths = agentPaths
-        let discovered = discoverAgents()
+    /// Discover path for a specific agent
+    func discoverAgent(named agentName: String) -> String? {
+        let searchPaths = getSearchPaths(for: agentName)
 
-        var updated = currentPaths
-        for (agent, path) in discovered {
-            if updated[agent] == nil {
-                updated[agent] = path
+        if let config = agentConfigs[agentName] {
+            for executableName in config.executableNames {
+                if let path = findExecutable(named: executableName, in: searchPaths) {
+                    return path
+                }
+            }
+        } else {
+            // Fallback: try agent name directly
+            if let path = findExecutable(named: agentName, in: searchPaths) {
+                return path
             }
         }
 
-        agentPaths = updated
+        return nil
     }
 
     // MARK: - Validation
@@ -165,7 +149,6 @@ class AgentRegistry {
         var prefs = defaults.dictionary(forKey: authPreferencesKey) as? [String: String] ?? [:]
         prefs[agentName] = authMethodId
         defaults.set(prefs, forKey: authPreferencesKey)
-        print("AgentRegistry: Saved auth preference for \(agentName): \(authMethodId)")
     }
 
     /// Get saved auth preference for an agent
@@ -188,8 +171,24 @@ class AgentRegistry {
 
     private func initializeDefaultAgentsIfNeeded() {
         if agentPaths.isEmpty {
-            autoDiscover()
+            let discovered = discoverAgents()
+            agentPaths = discovered
         }
+    }
+
+    private func getSearchPaths(for agentName: String) -> [String] {
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser
+        return [
+            homeDir.appendingPathComponent(".aizen/agents/\(agentName)").path,
+            "/usr/local/bin",
+            "/opt/homebrew/bin",
+            "/usr/bin",
+            homeDir.appendingPathComponent(".local/bin").path,
+            homeDir.appendingPathComponent("bin").path,
+            homeDir.appendingPathComponent(".cargo/bin").path,
+            homeDir.appendingPathComponent(".npm-global/bin").path,
+            "/usr/local/lib/node_modules/.bin",
+        ]
     }
 
     private func findExecutable(named name: String, in paths: [String]) -> String? {

@@ -45,6 +45,7 @@ struct ChatSessionView: View {
     @State private var showingVoiceRecording = false
     @State private var showingPermissionError = false
     @State private var permissionErrorMessage = ""
+    @State private var showingAgentSetupDialog = false
 
     var selectedAgent: String {
         session.agentName ?? "claude"
@@ -216,6 +217,11 @@ struct ChatSessionView: View {
         .sheet(isPresented: $showingAuthSheet) {
             if let agentSession = currentAgentSession {
                 AuthenticationSheet(session: agentSession)
+            }
+        }
+        .sheet(isPresented: $showingAgentSetupDialog) {
+            if let agentSession = currentAgentSession {
+                AgentSetupDialog(session: agentSession)
             }
         }
         .alert(String(localized: "chat.agent.switch.title"), isPresented: $showingAgentSwitchWarning) {
@@ -707,6 +713,15 @@ struct ChatSessionView: View {
             .sink { needsAuth in
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                     showingAuthSheet = needsAuth
+                }
+            }
+            .store(in: &cancellables)
+
+        session.$needsAgentSetup
+            .receive(on: DispatchQueue.main)
+            .sink { needsSetup in
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    showingAgentSetupDialog = needsSetup
                 }
             }
             .store(in: &cancellables)

@@ -35,6 +35,11 @@ class AgentSession: ObservableObject, ACPClientDelegate {
     @Published var currentModeId: String?
     @Published var currentModelId: String?
 
+    // Agent setup state
+    @Published var needsAgentSetup: Bool = false
+    @Published var missingAgentName: String?
+    @Published var setupError: String?
+
     // MARK: - Private Properties
 
     private var acpClient: ACPClient?
@@ -63,13 +68,13 @@ class AgentSession: ObservableObject, ACPClientDelegate {
         self.workingDirectory = workingDir
 
         // Get agent executable path from registry
-        guard let agentPath = AgentRegistry.shared.getAgentPath(for: agentName) else {
-            throw AgentSessionError.agentNotFound(agentName)
-        }
-
-        // Validate agent executable
-        guard AgentRegistry.shared.validateAgent(named: agentName) else {
-            throw AgentSessionError.agentNotExecutable(agentPath)
+        guard let agentPath = AgentRegistry.shared.getAgentPath(for: agentName),
+              AgentRegistry.shared.validateAgent(named: agentName) else {
+            // Agent not configured or invalid - trigger setup dialog
+            needsAgentSetup = true
+            missingAgentName = agentName
+            setupError = nil
+            return
         }
 
         // Initialize ACP client
@@ -693,6 +698,17 @@ class AgentSession: ObservableObject, ACPClientDelegate {
             continuation.resume(returning: response)
             permissionContinuation = nil
         }
+    }
+
+    /// Retry starting the session after agent setup is completed
+    func retryStart() async throws {
+        // Reset setup state
+        needsAgentSetup = false
+        missingAgentName = nil
+        setupError = nil
+
+        // Attempt to start session again
+        try await start(agentName: agentName, workingDir: workingDirectory)
     }
 }
 

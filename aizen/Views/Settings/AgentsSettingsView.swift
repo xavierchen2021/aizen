@@ -180,6 +180,23 @@ struct AgentConfigView: View {
         installError = nil
 
         Task {
+            // Try auto-discovery first
+            let discoveredPath = await Task.detached {
+                AgentRegistry.shared.discoverAgent(named: agentName)
+            }.value
+
+            if let path = discoveredPath {
+                // Found via discovery
+                await MainActor.run {
+                    AgentRegistry.shared.setAgentPath(path, for: agentName)
+                    agentPath = path
+                    validatePath()
+                    isInstalling = false
+                }
+                return
+            }
+
+            // If not found, try installation
             do {
                 try await AgentInstaller.shared.installAgent(agentName)
                 let execPath = await AgentInstaller.shared.getAgentExecutablePath(agentName)
