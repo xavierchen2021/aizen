@@ -26,7 +26,8 @@ class AgentRegistry {
     private static let builtInExecutableNames: [String: [String]] = [
         "claude": ["claude-code-acp"],
         "codex": ["codex-acp", "codex"],
-        "gemini": ["gemini"]
+        "gemini": ["gemini"],
+        "kimi": ["kimi"]
     ]
 
     // MARK: - Agent Metadata Model
@@ -79,9 +80,10 @@ class AgentRegistry {
     enum InstallMethod: Codable, Equatable {
         case npm(package: String)
         case binary(url: String)
+        case githubRelease(repo: String, assetPattern: String)
 
         enum CodingKeys: String, CodingKey {
-            case type, package, url
+            case type, package, url, repo, assetPattern
         }
 
         init(from decoder: Decoder) throws {
@@ -95,6 +97,10 @@ class AgentRegistry {
             case "binary":
                 let url = try container.decode(String.self, forKey: .url)
                 self = .binary(url: url)
+            case "githubRelease":
+                let repo = try container.decode(String.self, forKey: .repo)
+                let assetPattern = try container.decode(String.self, forKey: .assetPattern)
+                self = .githubRelease(repo: repo, assetPattern: assetPattern)
             default:
                 throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Unknown install method")
             }
@@ -110,6 +116,10 @@ class AgentRegistry {
             case .binary(let url):
                 try container.encode("binary", forKey: .type)
                 try container.encode(url, forKey: .url)
+            case .githubRelease(let repo, let assetPattern):
+                try container.encode("githubRelease", forKey: .type)
+                try container.encode(repo, forKey: .repo)
+                try container.encode(assetPattern, forKey: .assetPattern)
             }
         }
     }
@@ -380,57 +390,90 @@ class AgentRegistry {
     // MARK: - Private Helpers
 
     private func initializeDefaultAgents() {
-        // Only initialize if metadata is empty
-        if !agentMetadata.isEmpty {
-            return
-        }
+        // Get existing metadata
+        var metadata = agentMetadata
 
         // Try to discover agent paths
         let discovered = discoverAgents()
 
-        // Create default built-in agents
-        var metadata: [String: AgentMetadata] = [:]
+        // Create or update default built-in agents
+        // Only add if not already present to preserve user settings
 
-        // Claude
-        metadata["claude"] = AgentMetadata(
-            id: "claude",
-            name: "Claude",
-            description: "Anthropic's AI assistant with advanced coding capabilities",
-            iconType: .builtin("claude"),
-            isBuiltIn: true,
-            isEnabled: true,
-            executablePath: discovered["claude"],
-            launchArgs: [],
-            installMethod: .npm(package: "@zed-industries/claude-code-acp")
-        )
+        addAgentIfMissing("claude", to: &metadata, discovered: discovered) {
+            AgentMetadata(
+                id: "claude",
+                name: "Claude",
+                description: "Anthropic's AI assistant with advanced coding capabilities",
+                iconType: .builtin("claude"),
+                isBuiltIn: true,
+                isEnabled: true,
+                executablePath: discovered["claude"],
+                launchArgs: [],
+                installMethod: .npm(package: "@zed-industries/claude-code-acp")
+            )
+        }
 
-        // Codex
-        metadata["codex"] = AgentMetadata(
-            id: "codex",
-            name: "Codex",
-            description: "OpenAI's code generation model",
-            iconType: .builtin("openai"),
-            isBuiltIn: true,
-            isEnabled: true,
-            executablePath: discovered["codex"],
-            launchArgs: [],
-            installMethod: .binary(url: "https://github.com/openai/openai-agent/releases/download/v0.1.6/openai-agent-{arch}-apple-darwin.tar.gz")
-        )
+        addAgentIfMissing("codex", to: &metadata, discovered: discovered) {
+            AgentMetadata(
+                id: "codex",
+                name: "Codex",
+                description: "OpenAI's code generation model",
+                iconType: .builtin("openai"),
+                isBuiltIn: true,
+                isEnabled: true,
+                executablePath: discovered["codex"],
+                launchArgs: [],
+                installMethod: .githubRelease(
+                    repo: "openai/openai-agent",
+                    assetPattern: "openai-agent-{arch}-apple-darwin.tar.gz"
+                )
+            )
+        }
 
-        // Gemini
-        metadata["gemini"] = AgentMetadata(
-            id: "gemini",
-            name: "Gemini",
-            description: "Google's multimodal AI model",
-            iconType: .builtin("gemini"),
-            isBuiltIn: true,
-            isEnabled: true,
-            executablePath: discovered["gemini"],
-            launchArgs: ["--experimental-acp"],
-            installMethod: .npm(package: "@google/gemini-cli")
-        )
+        addAgentIfMissing("gemini", to: &metadata, discovered: discovered) {
+            AgentMetadata(
+                id: "gemini",
+                name: "Gemini",
+                description: "Google's multimodal AI model",
+                iconType: .builtin("gemini"),
+                isBuiltIn: true,
+                isEnabled: true,
+                executablePath: discovered["gemini"],
+                launchArgs: ["--experimental-acp"],
+                installMethod: .npm(package: "@google/gemini-cli")
+            )
+        }
+
+        addAgentIfMissing("kimi", to: &metadata, discovered: discovered) {
+            AgentMetadata(
+                id: "kimi",
+                name: "Kimi",
+                description: "Moonshot AI assistant",
+                iconType: .builtin("kimi"),
+                isBuiltIn: true,
+                isEnabled: true,
+                executablePath: discovered["kimi"],
+                launchArgs: ["--acp"],
+                installMethod: .githubRelease(
+                    repo: "MoonshotAI/kimi-cli",
+                    assetPattern: "kimi-{version}-{arch}-apple-darwin.tar.gz"
+                )
+            )
+        }
 
         agentMetadata = metadata
+    }
+
+    /// Helper to add agent if not already present, preserving user settings
+    private func addAgentIfMissing(
+        _ id: String,
+        to metadata: inout [String: AgentMetadata],
+        discovered: [String: String],
+        factory: () -> AgentMetadata
+    ) {
+        if metadata[id] == nil {
+            metadata[id] = factory()
+        }
     }
 
     private func getSearchPaths(for agentName: String) -> [String] {

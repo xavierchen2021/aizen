@@ -220,7 +220,7 @@ extension Ghostty {
                 let shellName = (shell as NSString).lastPathComponent
 
                 // Create config with updated font settings and theme
-                var configContent = """
+                let configContent = """
                 font-family = \(terminalFontName)
                 font-size = \(Int(terminalFontSize))
                 window-inherit-font-size = false

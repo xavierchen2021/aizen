@@ -11,7 +11,9 @@ import UniformTypeIdentifiers
 struct AgentListItemView: View {
     @Binding var metadata: AgentRegistry.AgentMetadata
     @State private var isInstalling = false
+    @State private var isUpdating = false
     @State private var isTesting = false
+    @State private var canUpdate = false
     @State private var testResult: String?
     @State private var showingFilePicker = false
     @State private var showingEditSheet = false
@@ -125,9 +127,11 @@ struct AgentListItemView: View {
                     // Action buttons
                     HStack(spacing: 8) {
                         // Install button (only for built-in with install method)
+                        // Don't show install button while updating
                         if metadata.isBuiltIn,
                            metadata.installMethod != nil,
-                           !AgentRegistry.shared.validateAgent(named: metadata.id) {
+                           !AgentRegistry.shared.validateAgent(named: metadata.id),
+                           !isUpdating {
                             if isInstalling {
                                 ProgressView()
                                     .scaleEffect(0.7)
@@ -141,6 +145,26 @@ struct AgentListItemView: View {
                                     }
                                 }
                                 .buttonStyle(.borderedProminent)
+                            }
+                        }
+
+                        // Update button (for agents installed in .aizen/agents)
+                        // Show updating status even if validation fails during update
+                        if canUpdate && (AgentRegistry.shared.validateAgent(named: metadata.id) || isUpdating) {
+                            if isUpdating {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                                    .frame(width: 16, height: 16)
+                                Text("Updating...")
+                                    .font(.caption)
+                            } else {
+                                Button("Update") {
+                                    Task {
+                                        await updateAgent()
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                                .help("Update to latest version")
                             }
                         }
 
@@ -219,9 +243,43 @@ struct AgentListItemView: View {
                 Text(error)
             }
         }
+        .onAppear {
+            Task {
+                canUpdate = await AgentInstaller.shared.canUpdate(metadata)
+            }
+        }
+        .onChange(of: metadata.executablePath) { _ in
+            Task {
+                canUpdate = await AgentInstaller.shared.canUpdate(metadata)
+            }
+        }
         .onDisappear {
             testTask?.cancel()
         }
+    }
+
+    private func updateAgent() async {
+        isUpdating = true
+        testResult = nil
+
+        do {
+            // Update directly without discovery - we want to update our managed installation
+            try await AgentInstaller.shared.updateAgent(metadata)
+
+            // Get the path from registry (installer already set it during update)
+            if let updatedPath = AgentRegistry.shared.getAgentPath(for: metadata.id) {
+                metadata.executablePath = updatedPath
+            }
+
+            testResult = "Updated to latest version"
+
+            // Refresh canUpdate state after successful update
+            canUpdate = await AgentInstaller.shared.canUpdate(metadata)
+        } catch {
+            testResult = "Update failed: \(error.localizedDescription)"
+        }
+
+        isUpdating = false
     }
 
     private func installAgent() async {

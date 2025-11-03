@@ -52,6 +52,23 @@ actor AgentInstaller {
                FileManager.default.isExecutableFile(atPath: agentPath)
     }
 
+    func canUpdate(_ metadata: AgentRegistry.AgentMetadata) -> Bool {
+        // Can update if:
+        // 1. Has an install method (npm, binary, or githubRelease)
+        // 2. Is currently installed in our managed .aizen/agents directory (not user-defined paths)
+        guard metadata.installMethod != nil else { return false }
+
+        // Get the expected path for our managed installation
+        let managedPath = getAgentExecutablePath(metadata.id)
+        guard !managedPath.isEmpty else { return false }
+
+        // Verify executable is actually at the managed path, not a user-defined location
+        guard let actualPath = metadata.executablePath else { return false }
+
+        // Only allow updates if executable is exactly at our managed path
+        return actualPath == managedPath && FileManager.default.fileExists(atPath: managedPath)
+    }
+
     func getAgentExecutablePath(_ agentName: String) -> String {
         let agentDir = (baseInstallPath as NSString).appendingPathComponent(agentName)
 
@@ -62,6 +79,8 @@ actor AgentInstaller {
             return (agentDir as NSString).appendingPathComponent("codex-acp")
         case "gemini":
             return (agentDir as NSString).appendingPathComponent("node_modules/.bin/gemini")
+        case "kimi":
+            return (agentDir as NSString).appendingPathComponent("kimi")
         default:
             return ""
         }
@@ -92,6 +111,13 @@ actor AgentInstaller {
             let resolvedURL = urlString.replacingOccurrences(of: "{arch}", with: arch)
             try await installBinaryFromURL(
                 url: resolvedURL,
+                agentId: metadata.id,
+                targetDir: agentDir
+            )
+        case .githubRelease(let repo, let assetPattern):
+            try await installFromGitHubRelease(
+                repo: repo,
+                assetPattern: assetPattern,
                 agentId: metadata.id,
                 targetDir: agentDir
             )
@@ -184,6 +210,56 @@ actor AgentInstaller {
         return shellEnv.isEmpty ? ProcessInfo.processInfo.environment : shellEnv
     }
 
+    // MARK: - GitHub Release Installation
+
+    private func installFromGitHubRelease(repo: String, assetPattern: String, agentId: String, targetDir: String) async throws {
+        // Fetch latest release info from GitHub API
+        let apiURL = URL(string: "https://api.github.com/repos/\(repo)/releases/latest")!
+
+        var request = URLRequest(url: apiURL, timeoutInterval: 30)
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        // Validate HTTP response
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AgentInstallError.downloadFailed(message: "Invalid response from GitHub API")
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let errorMessage: String
+            switch httpResponse.statusCode {
+            case 403, 429:
+                errorMessage = "GitHub API rate limit exceeded. Please try again later."
+            case 404:
+                errorMessage = "Release not found for \(repo)"
+            default:
+                errorMessage = "GitHub API returned status \(httpResponse.statusCode)"
+            }
+            throw AgentInstallError.downloadFailed(message: errorMessage)
+        }
+
+        // Parse JSON to get tag_name
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let tagName = json["tag_name"] as? String else {
+            throw AgentInstallError.invalidResponse
+        }
+
+        // Build download URL by replacing placeholders
+        let arch = getArchitecture()
+        let downloadURL = "https://github.com/\(repo)/releases/download/\(tagName)/"
+            + assetPattern
+                .replacingOccurrences(of: "{version}", with: tagName)
+                .replacingOccurrences(of: "{arch}", with: arch)
+
+        // Use existing binary installation logic
+        try await installBinaryFromURL(
+            url: downloadURL,
+            agentId: agentId,
+            targetDir: targetDir
+        )
+    }
+
     // MARK: - Binary Installation
 
     private func installBinaryFromURL(url: String, agentId: String, targetDir: String) async throws {
@@ -229,6 +305,8 @@ actor AgentInstaller {
             if let execPath = executablePath {
                 let attributes = [FileAttributeKey.posixPermissions: 0o755]
                 try FileManager.default.setAttributes(attributes, ofItemAtPath: execPath)
+                // Remove quarantine attribute to avoid security prompts
+                removeQuarantineAttribute(from: execPath)
             }
         } else {
             // Direct binary
@@ -238,6 +316,8 @@ actor AgentInstaller {
             // Make executable
             let attributes = [FileAttributeKey.posixPermissions: 0o755]
             try FileManager.default.setAttributes(attributes, ofItemAtPath: executablePath)
+            // Remove quarantine attribute to avoid security prompts
+            removeQuarantineAttribute(from: executablePath)
         }
     }
 
@@ -278,6 +358,23 @@ actor AgentInstaller {
         #endif
     }
 
+    // MARK: - Update
+
+    func updateAgent(_ metadata: AgentRegistry.AgentMetadata) async throws {
+        guard canUpdate(metadata) else {
+            throw AgentInstallError.installFailed(message: "Agent '\(metadata.name)' cannot be updated")
+        }
+
+        // Remove old installation
+        let agentDir = (baseInstallPath as NSString).appendingPathComponent(metadata.id)
+        if FileManager.default.fileExists(atPath: agentDir) {
+            try FileManager.default.removeItem(atPath: agentDir)
+        }
+
+        // Reinstall with latest version
+        try await installAgent(metadata)
+    }
+
     // MARK: - Uninstallation
 
     func uninstallAgent(_ agentName: String) async throws {
@@ -301,5 +398,19 @@ actor AgentInstaller {
                 attributes: nil
             )
         }
+    }
+
+    private func removeQuarantineAttribute(from path: String) {
+        // Remove quarantine attribute using xattr to avoid macOS security prompts
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
+        process.arguments = ["-d", "com.apple.quarantine", path]
+
+        // Suppress errors (file might not have quarantine attribute)
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+
+        try? process.run()
+        process.waitUntilExit()
     }
 }
