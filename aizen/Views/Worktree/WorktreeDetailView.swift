@@ -6,11 +6,14 @@
 //
 
 import SwiftUI
+import os.log
 
 struct WorktreeDetailView: View {
     @ObservedObject var worktree: Worktree
     @ObservedObject var repositoryManager: RepositoryManager
     @ObservedObject var appDetector = AppDetector.shared
+
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.aizen", category: "WorktreeDetailView")
 
     @State private var selectedTab = "chat"
     @State private var selectedChatSessionId: UUID?
@@ -267,7 +270,7 @@ struct WorktreeDetailView: View {
                 gitUntrackedFiles = untrackedCount
             }
         } catch {
-            print("Failed to load git status: \(error)")
+            logger.error("Failed to load git status: \(error.localizedDescription)")
         }
     }
 
@@ -295,7 +298,7 @@ struct WorktreeDetailView: View {
         do {
             try context.save()
         } catch {
-            print("Failed to delete chat session: \(error)")
+            logger.error("Failed to delete chat session: \(error.localizedDescription)")
         }
     }
 
@@ -323,7 +326,7 @@ struct WorktreeDetailView: View {
         do {
             try context.save()
         } catch {
-            print("Failed to delete terminal session: \(error)")
+            logger.error("Failed to delete terminal session: \(error.localizedDescription)")
         }
     }
 
@@ -350,7 +353,8 @@ struct WorktreeDetailView: View {
         let session = ChatSession(context: context)
         session.id = UUID()
         let defaultAgent = AgentRouter().defaultAgent
-        session.title = defaultAgent.capitalized
+        let displayName = AgentRegistry.shared.getMetadata(for: defaultAgent)?.name ?? defaultAgent.capitalized
+        session.title = displayName
         session.agentName = defaultAgent
         session.createdAt = Date()
         session.worktree = worktree
@@ -359,7 +363,7 @@ struct WorktreeDetailView: View {
             try context.save()
             selectedChatSessionId = session.id
         } catch {
-            print("Failed to create chat session: \(error)")
+            logger.error("Failed to create chat session: \(error.localizedDescription)")
         }
     }
 
@@ -378,7 +382,7 @@ struct WorktreeDetailView: View {
             try context.save()
             selectedTerminalSessionId = session.id
         } catch {
-            print("Failed to create terminal session: \(error)")
+            logger.error("Failed to create terminal session: \(error.localizedDescription)")
         }
     }
 }
@@ -387,6 +391,7 @@ struct DetailsTabView: View {
     @ObservedObject var worktree: Worktree
     @ObservedObject var repositoryManager: RepositoryManager
 
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.aizen", category: "DetailsTabView")
     @State private var currentBranch = ""
     @State private var ahead = 0
     @State private var behind = 0
@@ -625,7 +630,7 @@ struct DetailsTabView: View {
         do {
             try repositoryManager.updateWorktreeAccess(worktree)
         } catch {
-            print("Failed to update last accessed: \(error)")
+            logger.error("Failed to update last accessed: \(error.localizedDescription)")
         }
     }
 }
@@ -907,10 +912,9 @@ struct GitStatusView: View {
 
     var body: some View {
         Button {
-            print("git status")
+            // TODO: Implement git status detail view
         } label: {
-        
-        HStack(spacing: 8) {
+            HStack(spacing: 8) {
             if additions > 0 {
                 Text("+\(additions)")
                     .font(.system(size: 11, weight: .medium))

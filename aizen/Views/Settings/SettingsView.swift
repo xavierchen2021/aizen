@@ -10,14 +10,8 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage("defaultEditor") private var defaultEditor = "code"
     @AppStorage("defaultACPAgent") private var defaultACPAgent = "claude"
-    @AppStorage("acpAgentPath_claude") private var claudePath = ""
-    @AppStorage("acpAgentPath_codex") private var codexPath = ""
-    @AppStorage("acpAgentPath_gemini") private var geminiPath = ""
     @AppStorage("terminalFontName") private var terminalFontName = "Menlo"
     @AppStorage("terminalFontSize") private var terminalFontSize = 12.0
-
-    @State private var testingAgent: String? = nil
-    @State private var testResult: String? = nil
 
     var body: some View {
         TabView {
@@ -36,18 +30,11 @@ struct SettingsView: View {
             }
             .tag("terminal")
 
-            AgentsSettingsView(
-                defaultACPAgent: $defaultACPAgent,
-                claudePath: $claudePath,
-                codexPath: $codexPath,
-                geminiPath: $geminiPath,
-                testingAgent: $testingAgent,
-                testResult: $testResult
-            )
-            .tabItem {
-                Label("settings.agents.title", systemImage: "brain")
-            }
-            .tag("agents")
+            AgentsSettingsView(defaultACPAgent: $defaultACPAgent)
+                .tabItem {
+                    Label("settings.agents.title", systemImage: "brain")
+                }
+                .tag("agents")
 
             AdvancedSettingsView()
                 .tabItem {

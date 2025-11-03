@@ -42,6 +42,10 @@ actor AgentInstaller {
 
     // MARK: - Installation Status
 
+    func canInstall(_ metadata: AgentRegistry.AgentMetadata) -> Bool {
+        return metadata.installMethod != nil
+    }
+
     func isInstalled(_ agentName: String) -> Bool {
         let agentPath = getAgentExecutablePath(agentName)
         return FileManager.default.fileExists(atPath: agentPath) &&
@@ -65,34 +69,46 @@ actor AgentInstaller {
 
     // MARK: - Installation
 
-    func installAgent(_ agentName: String) async throws {
-        let agentDir = (baseInstallPath as NSString).appendingPathComponent(agentName)
+    func installAgent(_ metadata: AgentRegistry.AgentMetadata) async throws {
+        guard let installMethod = metadata.installMethod else {
+            throw AgentInstallError.installFailed(message: "Agent '\(metadata.name)' has no installation method")
+        }
+
+        let agentDir = (baseInstallPath as NSString).appendingPathComponent(metadata.id)
 
         // Create directory if needed
         try createDirectoryIfNeeded(agentDir)
 
-        switch agentName {
-        case "claude":
+        switch installMethod {
+        case .npm(let package):
             try await installNpmAgent(
-                name: "claude",
-                package: "@zed-industries/claude-code-acp",
+                name: metadata.id,
+                package: package,
                 targetDir: agentDir
             )
-        case "codex":
-            try await installCodexBinary(targetDir: agentDir)
-        case "gemini":
-            try await installNpmAgent(
-                name: "gemini",
-                package: "@google/gemini-cli",
+        case .binary(let urlString):
+            // Replace {arch} placeholder
+            let arch = getArchitecture()
+            let resolvedURL = urlString.replacingOccurrences(of: "{arch}", with: arch)
+            try await installBinaryFromURL(
+                url: resolvedURL,
+                agentId: metadata.id,
                 targetDir: agentDir
             )
-        default:
-            throw AgentInstallError.installFailed(message: "Unknown agent: \(agentName)")
         }
 
         // Register the installed path
-        let executablePath = getAgentExecutablePath(agentName)
-        AgentRegistry.shared.setAgentPath(executablePath, for: agentName)
+        let executablePath = getAgentExecutablePath(metadata.id)
+        AgentRegistry.shared.setAgentPath(executablePath, for: metadata.id)
+    }
+
+    // Legacy method for backwards compatibility
+    func installAgent(_ agentName: String) async throws {
+        guard let metadata = AgentRegistry.shared.getMetadata(for: agentName) else {
+            throw AgentInstallError.installFailed(message: "Unknown agent: \(agentName)")
+        }
+
+        try await installAgent(metadata)
     }
 
     // MARK: - NPM Installation
@@ -168,51 +184,88 @@ actor AgentInstaller {
         return shellEnv.isEmpty ? ProcessInfo.processInfo.environment : shellEnv
     }
 
-    // MARK: - Codex Binary Installation
+    // MARK: - Binary Installation
 
-    private func installCodexBinary(targetDir: String) async throws {
-        // Determine architecture
-        let arch = getArchitecture()
-        let version = "v0.1.6"
-        let filename = "codex-acp-\(version)-\(arch)-apple-darwin.tar.gz"
-        let downloadURL = "https://github.com/cola-io/codex-acp/releases/download/\(version)/\(filename)"
+    private func installBinaryFromURL(url: String, agentId: String, targetDir: String) async throws {
+        guard let downloadURL = URL(string: url) else {
+            throw AgentInstallError.downloadFailed(message: "Invalid URL: \(url)")
+        }
 
         // Download
-        guard let url = URL(string: downloadURL) else {
-            throw AgentInstallError.downloadFailed(message: "Invalid URL")
+        let (tempFileURL, _) = try await URLSession.shared.download(from: downloadURL)
+
+        // Determine if it's a tarball
+        let isTarball = url.hasSuffix(".tar.gz") || url.hasSuffix(".tgz")
+
+        if isTarball {
+            // Extract tarball
+            let filename = (url as NSString).lastPathComponent
+            let tarPath = (targetDir as NSString).appendingPathComponent(filename)
+            try FileManager.default.copyItem(at: tempFileURL, to: URL(fileURLWithPath: tarPath))
+
+            // Untar
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+            process.arguments = ["-xzf", filename, "-C", targetDir]
+            process.currentDirectoryURL = URL(fileURLWithPath: targetDir)
+
+            let errorPipe = Pipe()
+            process.standardError = errorPipe
+
+            try process.run()
+            process.waitUntilExit()
+
+            // Clean up tar file
+            try? FileManager.default.removeItem(atPath: tarPath)
+
+            if process.terminationStatus != 0 {
+                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown error"
+                throw AgentInstallError.installFailed(message: "Extraction failed: \(errorMessage)")
+            }
+
+            // Find and make executable
+            let executablePath = findExecutableInDirectory(targetDir, preferredName: agentId)
+            if let execPath = executablePath {
+                let attributes = [FileAttributeKey.posixPermissions: 0o755]
+                try FileManager.default.setAttributes(attributes, ofItemAtPath: execPath)
+            }
+        } else {
+            // Direct binary
+            let executablePath = (targetDir as NSString).appendingPathComponent(agentId)
+            try FileManager.default.copyItem(at: tempFileURL, to: URL(fileURLWithPath: executablePath))
+
+            // Make executable
+            let attributes = [FileAttributeKey.posixPermissions: 0o755]
+            try FileManager.default.setAttributes(attributes, ofItemAtPath: executablePath)
+        }
+    }
+
+    private func findExecutableInDirectory(_ directory: String, preferredName: String) -> String? {
+        let fileManager = FileManager.default
+
+        guard let contents = try? fileManager.contentsOfDirectory(atPath: directory) else {
+            return nil
         }
 
-        let (tempFileURL, _) = try await URLSession.shared.download(from: url)
-
-        // Extract
-        let tarPath = (targetDir as NSString).appendingPathComponent(filename)
-        try FileManager.default.copyItem(at: tempFileURL, to: URL(fileURLWithPath: tarPath))
-
-        // Untar
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
-        process.arguments = ["-xzf", filename, "-C", targetDir]
-        process.currentDirectoryURL = URL(fileURLWithPath: targetDir)
-
-        let errorPipe = Pipe()
-        process.standardError = errorPipe
-
-        try process.run()
-        process.waitUntilExit()
-
-        // Clean up tar file
-        try? FileManager.default.removeItem(atPath: tarPath)
-
-        if process.terminationStatus != 0 {
-            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-            let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown error"
-            throw AgentInstallError.installFailed(message: "Extraction failed: \(errorMessage)")
+        // Look for preferred name first
+        let preferredPath = (directory as NSString).appendingPathComponent(preferredName)
+        if fileManager.fileExists(atPath: preferredPath) {
+            return preferredPath
         }
 
-        // Make executable
-        let executablePath = (targetDir as NSString).appendingPathComponent("codex-acp")
-        let attributes = [FileAttributeKey.posixPermissions: 0o755]
-        try FileManager.default.setAttributes(attributes, ofItemAtPath: executablePath)
+        // Look for any executable file
+        for item in contents {
+            let itemPath = (directory as NSString).appendingPathComponent(item)
+            var isDirectory: ObjCBool = false
+            if fileManager.fileExists(atPath: itemPath, isDirectory: &isDirectory) {
+                if !isDirectory.boolValue && fileManager.isExecutableFile(atPath: itemPath) {
+                    return itemPath
+                }
+            }
+        }
+
+        return nil
     }
 
     private func getArchitecture() -> String {

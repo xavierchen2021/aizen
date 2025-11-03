@@ -7,6 +7,9 @@ class AgentRouter: ObservableObject {
 
     private let defaultAgentKey = "defaultACPAgent"
 
+    // Cache for fast agent lookup by ID or name
+    private var enabledAgentLookup: [String: AgentRegistry.AgentMetadata] = [:]
+
     var defaultAgent: String {
         get {
             UserDefaults.standard.string(forKey: defaultAgentKey) ?? "claude"
@@ -16,18 +19,30 @@ class AgentRouter: ObservableObject {
         }
     }
 
-    private let agentAliases: [String: String] = [
-        "claude": "claude",
-        "codex": "codex",
-        "gemini": "gemini"
-    ]
-
     @MainActor
     init() {
-        // Initialize default sessions
-        activeSessions["claude"] = AgentSession(agentName: "claude")
-        activeSessions["codex"] = AgentSession(agentName: "codex")
-        activeSessions["gemini"] = AgentSession(agentName: "gemini")
+        // Initialize sessions for enabled agents
+        rebuildLookupCache()
+        for agent in AgentRegistry.shared.enabledAgents {
+            activeSessions[agent.id] = AgentSession(agentName: agent.id)
+        }
+
+        // Listen for agent metadata changes
+        NotificationCenter.default.addObserver(
+            forName: .agentMetadataDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.rebuildLookupCache()
+        }
+    }
+
+    private func rebuildLookupCache() {
+        enabledAgentLookup.removeAll()
+        for agent in AgentRegistry.shared.enabledAgents {
+            enabledAgentLookup[agent.id.lowercased()] = agent
+            enabledAgentLookup[agent.name.lowercased()] = agent
+        }
     }
 
     @MainActor
@@ -43,7 +58,8 @@ class AgentRouter: ObservableObject {
             if let mentionRange = Range(match.range(at: 1), in: message) {
                 let mentionedAgent = String(message[mentionRange]).lowercased()
 
-                if let resolvedAgent = agentAliases[mentionedAgent] {
+                // Use cached lookup for O(1) performance
+                if let matchingAgent = enabledAgentLookup[mentionedAgent] {
                     let cleanedMessage = regex.stringByReplacingMatches(
                         in: message,
                         options: [],
@@ -51,8 +67,8 @@ class AgentRouter: ObservableObject {
                         withTemplate: ""
                     ).trimmingCharacters(in: .whitespaces)
 
-                    ensureSession(for: resolvedAgent)
-                    return (resolvedAgent, cleanedMessage)
+                    ensureSession(for: matchingAgent.id)
+                    return (matchingAgent.id, cleanedMessage)
                 }
             }
         }
@@ -67,7 +83,11 @@ class AgentRouter: ObservableObject {
     @MainActor
     func ensureSession(for agentName: String) {
         if activeSessions[agentName] == nil {
-            activeSessions[agentName] = AgentSession(agentName: agentName)
+            // Only create session if agent is enabled
+            if let metadata = AgentRegistry.shared.getMetadata(for: agentName),
+               metadata.isEnabled {
+                activeSessions[agentName] = AgentSession(agentName: agentName)
+            }
         }
     }
 

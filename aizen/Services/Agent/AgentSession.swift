@@ -146,7 +146,8 @@ class AgentSession: ObservableObject, ACPClientDelegate {
 
         startNotificationListener(client: client)
 
-        addSystemMessage("Session started with \(agentName) in \(workingDir)")
+        let displayName = AgentRegistry.shared.getMetadata(for: agentName)?.name ?? agentName
+        addSystemMessage("Session started with \(displayName) in \(workingDir)")
     }
 
     /// Helper to create session directly
@@ -170,7 +171,8 @@ class AgentSession: ObservableObject, ACPClientDelegate {
         }
 
         startNotificationListener(client: client)
-        addSystemMessage("Session started with \(agentName) in \(workingDir)")
+        let displayName = AgentRegistry.shared.getMetadata(for: agentName)?.name ?? agentName
+        addSystemMessage("Session started with \(displayName) in \(workingDir)")
     }
 
     /// Helper to perform authentication and create session

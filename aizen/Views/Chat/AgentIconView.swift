@@ -9,11 +9,74 @@ import SwiftUI
 
 /// Shared agent icon view builder
 struct AgentIconView: View {
-    let agent: String
+    let iconType: AgentRegistry.IconType?
+    let agentName: String?
     let size: CGFloat
 
+    init(iconType: AgentRegistry.IconType, size: CGFloat) {
+        self.iconType = iconType
+        self.agentName = nil
+        self.size = size
+    }
+
+    init(agent: String, size: CGFloat) {
+        self.iconType = nil
+        self.agentName = agent
+        self.size = size
+    }
+
+    init(metadata: AgentRegistry.AgentMetadata, size: CGFloat) {
+        self.iconType = metadata.iconType
+        self.agentName = nil
+        self.size = size
+    }
+
     var body: some View {
-        switch agent.lowercased() {
+        if let iconType = iconType {
+            iconForType(iconType)
+        } else if let agentName = agentName {
+            iconForAgentName(agentName)
+        } else {
+            defaultIcon
+        }
+    }
+
+    @ViewBuilder
+    private func iconForType(_ type: AgentRegistry.IconType) -> some View {
+        switch type {
+        case .builtin(let name):
+            iconForBuiltinName(name)
+        case .sfSymbol(let symbolName):
+            Image(systemName: symbolName)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size, height: size)
+        case .customImage(let imageData):
+            if let nsImage = NSImage(data: imageData) {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: size, height: size)
+            } else {
+                defaultIcon
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func iconForAgentName(_ agent: String) -> some View {
+        // Check if metadata exists
+        if let metadata = AgentRegistry.shared.getMetadata(for: agent) {
+            iconForType(metadata.iconType)
+        } else {
+            // Legacy fallback
+            iconForBuiltinName(agent.lowercased())
+        }
+    }
+
+    @ViewBuilder
+    private func iconForBuiltinName(_ name: String) -> some View {
+        switch name.lowercased() {
         case "claude":
             Image("claude")
                 .resizable()
@@ -30,10 +93,14 @@ struct AgentIconView: View {
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size, height: size)
         default:
-            Image(systemName: "brain.head.profile")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: size, height: size)
+            defaultIcon
         }
+    }
+
+    private var defaultIcon: some View {
+        Image(systemName: "brain.head.profile")
+            .resizable()
+            .aspectRatio(contentMode: .fit)
+            .frame(width: size, height: size)
     }
 }

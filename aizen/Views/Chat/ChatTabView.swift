@@ -7,12 +7,15 @@
 
 import SwiftUI
 import CoreData
+import os.log
 
 struct ChatTabView: View {
     let worktree: Worktree
     @Binding var selectedSessionId: UUID?
 
     private let sessionManager = ChatSessionManager.shared
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.aizen", category: "ChatTabView")
+    @State private var enabledAgents: [AgentRegistry.AgentMetadata] = []
 
     var sessions: [ChatSession] {
         let sessions = (worktree.chatSessions as? Set<ChatSession>) ?? []
@@ -62,31 +65,56 @@ struct ChatTabView: View {
                 }
             }
 
-            HStack(spacing: 12) {
-                ForEach(AgentRegistry.shared.availableAgents.prefix(3), id: \.self) { agent in
-                    Button {
-                        createNewSession(withAgent: agent)
-                    } label: {
-                        VStack(spacing: 8) {
-                            AgentIconView(agent: agent, size: 12)
-                            Text(agent.capitalized)
-                                .font(.system(size: 13, weight: .medium))
-                        }
-                        .frame(width: 100, height: 80)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(.separator.opacity(0.3), lineWidth: 1)
-                        }
+            // Responsive layout: row if <=5 agents, column if >5
+            if enabledAgents.count <= 5 {
+                HStack(spacing: 12) {
+                    ForEach(enabledAgents, id: \.id) { agentMetadata in
+                        agentButton(for: agentMetadata)
                     }
-                    .buttonStyle(.plain)
                 }
+            } else {
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(100), spacing: 12), count: 3), spacing: 12) {
+                    ForEach(enabledAgents, id: \.id) { agentMetadata in
+                        agentButton(for: agentMetadata)
+                    }
+                }
+                .padding(.horizontal, 20)
             }
 
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear {
+            loadEnabledAgents()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .agentMetadataDidChange)) { _ in
+            loadEnabledAgents()
+        }
+    }
+
+    @ViewBuilder
+    private func agentButton(for agentMetadata: AgentRegistry.AgentMetadata) -> some View {
+        Button {
+            createNewSession(withAgent: agentMetadata.id)
+        } label: {
+            VStack(spacing: 8) {
+                AgentIconView(metadata: agentMetadata, size: 12)
+                Text(agentMetadata.name)
+                    .font(.system(size: 13, weight: .medium))
+            }
+            .frame(width: 100, height: 80)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(.separator.opacity(0.3), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func loadEnabledAgents() {
+        enabledAgents = AgentRegistry.shared.enabledAgents
     }
 
     private func createNewSession(withAgent agent: String) {
@@ -94,7 +122,10 @@ struct ChatTabView: View {
 
         let session = ChatSession(context: context)
         session.id = UUID()
-        session.title = agent.capitalized
+
+        // Use agent display name instead of ID
+        let displayName = AgentRegistry.shared.getMetadata(for: agent)?.name ?? agent.capitalized
+        session.title = displayName
         session.agentName = agent
         session.createdAt = Date()
         session.worktree = worktree
@@ -103,7 +134,7 @@ struct ChatTabView: View {
             try context.save()
             selectedSessionId = session.id
         } catch {
-            print("Failed to create chat session: \(error)")
+            logger.error("Failed to create chat session: \(error.localizedDescription)")
         }
     }
 }

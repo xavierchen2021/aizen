@@ -154,15 +154,15 @@ struct ChatSessionView: View {
 
                         HStack(spacing: 8) {
                             Menu {
-                                ForEach(AgentRegistry.shared.availableAgents, id: \.self) { agent in
+                                ForEach(AgentRegistry.shared.enabledAgents, id: \.id) { agentMetadata in
                                     Button {
-                                        requestAgentSwitch(to: agent)
+                                        requestAgentSwitch(to: agentMetadata.id)
                                     } label: {
                                         HStack {
-                                            AgentIconView(agent: agent, size: 14)
-                                            Text(agent.capitalized)
+                                            AgentIconView(metadata: agentMetadata, size: 14)
+                                            Text(agentMetadata.name)
                                             Spacer()
-                                            if agent == selectedAgent {
+                                            if agentMetadata.id == selectedAgent {
                                                 Image(systemName: "checkmark")
                                                     .foregroundStyle(.blue)
                                             }
@@ -172,7 +172,7 @@ struct ChatSessionView: View {
                             } label: {
                                 HStack(spacing: 6) {
                                     AgentIconView(agent: selectedAgent, size: 12)
-                                    Text(selectedAgent.capitalized)
+                                    Text(AgentRegistry.shared.getMetadata(for: selectedAgent)?.name ?? selectedAgent.capitalized)
                                         .font(.system(size: 11, weight: .medium))
                                     Image(systemName: "chevron.down")
                                         .font(.system(size: 8))
@@ -269,7 +269,8 @@ struct ChatSessionView: View {
 
     private func performAgentSwitch(to newAgent: String) {
         session.agentName = newAgent
-        session.title = newAgent.capitalized
+        let displayName = AgentRegistry.shared.getMetadata(for: newAgent)?.name ?? newAgent.capitalized
+        session.title = displayName
 
         session.objectWillChange.send()
         worktree.objectWillChange.send()
