@@ -169,7 +169,7 @@ actor ACPClient {
         }
 
         // Load user's shell environment for full access to their commands
-        var environment = loadUserShellEnvironment()
+        var environment = ShellEnvironment.loadUserShellEnvironment()
 
         // Get the directory containing the agent executable (for node, etc.)
         let agentDir = (agentPath as NSString).deletingLastPathComponent
@@ -770,93 +770,6 @@ actor ACPClient {
         }
     }
 
-    // MARK: - Shell Environment Loading
-
-    private func loadUserShellEnvironment() -> [String: String] {
-        let shell = getLoginShell()
-        let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
-
-        // Run shell in login mode to source profile files
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: shell)
-
-        // Different shells use different flags
-        let shellName = (shell as NSString).lastPathComponent
-        let arguments: [String]
-        switch shellName {
-        case "fish":
-            // Fish uses -l -c for login shell
-            arguments = ["-l", "-c", "env"]
-        case "zsh", "bash":
-            // Bash and Zsh use -l -c
-            arguments = ["-l", "-c", "env"]
-        case "sh":
-            // POSIX sh uses -l -c
-            arguments = ["-l", "-c", "env"]
-        default:
-            // Generic fallback
-            arguments = ["-c", "env"]
-        }
-
-        process.arguments = arguments
-        process.currentDirectoryURL = URL(fileURLWithPath: homeDir)
-
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe() // Discard stderr
-
-        var shellEnv: [String: String] = [:]
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let output = String(data: data, encoding: .utf8) {
-                for line in output.split(separator: "\n") {
-                    if let equalsIndex = line.firstIndex(of: "=") {
-                        let key = String(line[..<equalsIndex])
-                        let value = String(line[line.index(after: equalsIndex)...])
-                        shellEnv[key] = value
-                    }
-                }
-            }
-        } catch {
-            shellEnv = ProcessInfo.processInfo.environment
-            return shellEnv
-        }
-
-        if shellEnv.isEmpty {
-            shellEnv = ProcessInfo.processInfo.environment
-        }
-
-        return shellEnv
-    }
-
-    private func getLoginShell() -> String {
-        // Try to get user's login shell
-        if let shell = ProcessInfo.processInfo.environment["SHELL"], !shell.isEmpty {
-            return shell
-        }
-
-        // Fallback to common shells in order of preference
-        let possibleShells = [
-            "/bin/zsh",                 // macOS default
-            "/bin/bash",                // Common default
-            "/opt/homebrew/bin/fish",   // Fish via Homebrew (Apple Silicon)
-            "/usr/local/bin/fish",      // Fish via Homebrew (Intel)
-            "/bin/fish",                // Fish system install
-            "/bin/sh"                   // POSIX fallback
-        ]
-
-        for shell in possibleShells {
-            if FileManager.default.fileExists(atPath: shell) {
-                return shell
-            }
-        }
-
-        return "/bin/sh"
-    }
 }
 
 // MARK: - FileHandle Extension

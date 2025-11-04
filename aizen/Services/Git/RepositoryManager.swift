@@ -13,7 +13,13 @@ import Combine
 @MainActor
 class RepositoryManager: ObservableObject {
     private let viewContext: NSManagedObjectContext
-    let gitService = GitService()
+
+    // Domain services
+    private let executor: GitCommandExecutor
+    private let statusService: GitStatusService
+    private let branchService: GitBranchService
+    private let worktreeService: GitWorktreeService
+    private let remoteService: GitRemoteService
 
     nonisolated var objectWillChange: ObservableObjectPublisher {
         ObservableObjectPublisher()
@@ -21,6 +27,13 @@ class RepositoryManager: ObservableObject {
 
     init(viewContext: NSManagedObjectContext) {
         self.viewContext = viewContext
+
+        // Initialize domain services
+        self.executor = GitCommandExecutor()
+        self.statusService = GitStatusService(executor: executor)
+        self.branchService = GitBranchService(executor: executor)
+        self.worktreeService = GitWorktreeService(executor: executor)
+        self.remoteService = GitRemoteService(executor: executor)
     }
 
     // MARK: - Workspace Operations
@@ -65,12 +78,12 @@ class RepositoryManager: ObservableObject {
 
     func addExistingRepository(path: String, workspace: Workspace) async throws -> Repository {
         // Validate it's a git repository
-        guard try await gitService.isGitRepository(at: path) else {
+        guard await executor.isGitRepository(at: path) else {
             throw GitError.notAGitRepository
         }
 
         // Get main repository path (in case this is a worktree)
-        let mainRepoPath = try await gitService.getMainRepositoryPath(at: path)
+        let mainRepoPath = await executor.getMainRepositoryPath(at: path)
 
         // Check if repository already exists
         let fetchRequest: NSFetchRequest<Repository> = Repository.fetchRequest()
@@ -87,7 +100,7 @@ class RepositoryManager: ObservableObject {
         let repository = Repository(context: viewContext)
         repository.id = UUID()
         repository.path = mainRepoPath
-        repository.name = try await gitService.getRepositoryName(at: mainRepoPath)
+        repository.name = try await remoteService.getRepositoryName(at: mainRepoPath)
         repository.workspace = workspace
         repository.lastUpdated = Date()
 
@@ -100,7 +113,7 @@ class RepositoryManager: ObservableObject {
 
     func cloneRepository(url: String, destinationPath: String, workspace: Workspace) async throws -> Repository {
         // Clone the repository
-        try await gitService.clone(url: url, to: destinationPath)
+        try await remoteService.clone(url: url, to: destinationPath)
 
         // Add it as an existing repository
         return try await addExistingRepository(path: destinationPath, workspace: workspace)
@@ -116,7 +129,7 @@ class RepositoryManager: ObservableObject {
         }
 
         // Initialize git repository
-        try await gitService.initRepository(at: fullPath)
+        try await remoteService.initRepository(at: fullPath)
 
         // Add as existing repository
         return try await addExistingRepository(path: fullPath, workspace: workspace)
@@ -139,7 +152,7 @@ class RepositoryManager: ObservableObject {
     // MARK: - Worktree Operations
 
     func scanWorktrees(for repository: Repository) async throws {
-        let worktreeInfos = try await gitService.listWorktrees(at: repository.path!)
+        let worktreeInfos = try await worktreeService.listWorktrees(at: repository.path!)
 
         // Get existing worktrees
         let existingWorktrees = (repository.worktrees as? Set<Worktree>) ?? []
@@ -193,7 +206,7 @@ class RepositoryManager: ObservableObject {
             try? ".aizen/\n".write(to: gitignorePath, atomically: true, encoding: .utf8)
         }
 
-        try await gitService.addWorktree(at: repoPath, path: path, branch: branch, createBranch: createBranch, baseBranch: baseBranch)
+        try await worktreeService.addWorktree(at: repoPath, path: path, branch: branch, createBranch: createBranch, baseBranch: baseBranch)
 
         let worktree = Worktree(context: viewContext)
         worktree.id = UUID()
@@ -211,7 +224,7 @@ class RepositoryManager: ObservableObject {
         guard let worktreePath = worktree.path else {
             throw GitError.worktreeNotFound
         }
-        return try await gitService.hasUnsavedChanges(at: worktreePath)
+        return try await statusService.hasUnsavedChanges(at: worktreePath)
     }
 
     func deleteWorktree(_ worktree: Worktree, force: Bool = false) async throws {
@@ -221,7 +234,7 @@ class RepositoryManager: ObservableObject {
             throw GitError.worktreeNotFound
         }
 
-        try await gitService.removeWorktree(at: worktreePath, repoPath: repoPath, force: force)
+        try await worktreeService.removeWorktree(at: worktreePath, repoPath: repoPath, force: force)
 
         viewContext.delete(worktree)
         try viewContext.save()
@@ -235,7 +248,7 @@ class RepositoryManager: ObservableObject {
     // MARK: - Branch Operations
 
     func getBranches(for repository: Repository) async throws -> [BranchInfo] {
-        return try await gitService.listBranches(at: repository.path!, includeRemote: true)
+        return try await branchService.listBranches(at: repository.path!, includeRemote: true)
     }
 
     func getWorktreeStatus(_ worktree: Worktree) async throws -> (branch: String, ahead: Int, behind: Int) {
@@ -243,8 +256,8 @@ class RepositoryManager: ObservableObject {
             throw GitError.worktreeNotFound
         }
 
-        let branch = try await gitService.getCurrentBranch(at: path)
-        let status = try await gitService.getBranchStatus(at: path)
+        let branch = try await statusService.getCurrentBranch(at: path)
+        let status = try await statusService.getBranchStatus(at: path)
 
         return (branch, status.ahead, status.behind)
     }

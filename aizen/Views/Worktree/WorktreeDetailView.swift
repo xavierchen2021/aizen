@@ -12,18 +12,25 @@ struct WorktreeDetailView: View {
     @ObservedObject var worktree: Worktree
     @ObservedObject var repositoryManager: RepositoryManager
     @ObservedObject var appDetector = AppDetector.shared
+    var onWorktreeDeleted: ((Worktree?) -> Void)?
 
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.aizen", category: "WorktreeDetailView")
 
     @State private var selectedTab = "chat"
     @State private var selectedChatSessionId: UUID?
     @State private var selectedTerminalSessionId: UUID?
-    @State private var gitAdditions = 0
-    @State private var gitDeletions = 0
-    @State private var gitUntrackedFiles = 0
-    @State private var isLoadingGitStatus = false
-    @State private var gitStatusTimer: Timer?
     @State private var lastOpenedApp: DetectedApp?
+    @State private var showingGitSidebar = false
+    @StateObject private var gitRepositoryService: GitRepositoryService
+    @State private var gitIndexWatcher: GitIndexWatcher?
+    @State private var sidebarWidth: CGFloat = 350
+
+    init(worktree: Worktree, repositoryManager: RepositoryManager, onWorktreeDeleted: ((Worktree?) -> Void)? = nil) {
+        self.worktree = worktree
+        self.repositoryManager = repositoryManager
+        self.onWorktreeDeleted = onWorktreeDeleted
+        _gitRepositoryService = StateObject(wrappedValue: GitRepositoryService(worktreePath: worktree.path ?? ""))
+    }
 
     var chatSessions: [ChatSession] {
         let sessions = (worktree.chatSessions as? Set<ChatSession>) ?? []
@@ -40,7 +47,9 @@ struct WorktreeDetailView: View {
     }
 
     var hasGitChanges: Bool {
-        gitAdditions > 0 || gitDeletions > 0 || gitUntrackedFiles > 0
+        gitRepositoryService.currentStatus.additions > 0 ||
+        gitRepositoryService.currentStatus.deletions > 0 ||
+        gitRepositoryService.currentStatus.untrackedFiles.count > 0
     }
     
     
@@ -122,20 +131,59 @@ struct WorktreeDetailView: View {
         ToolbarItem(placement: .automatic) {
             if hasGitChanges {
                 GitStatusView(
-                    additions: gitAdditions,
-                    deletions: gitDeletions,
-                    untrackedFiles: gitUntrackedFiles
+                    additions: gitRepositoryService.currentStatus.additions,
+                    deletions: gitRepositoryService.currentStatus.deletions,
+                    untrackedFiles: gitRepositoryService.currentStatus.untrackedFiles.count
                 )
             }
+        }
+
+        ToolbarItem(placement: .automatic) {
+            Button(action: {
+                showingGitSidebar.toggle()
+            }) {
+                Label("Git Changes", systemImage: "sidebar.right")
+            }
+            .labelStyle(.iconOnly)
+            .help("Show Git Changes")
         }
     }
 
     var body: some View {
         NavigationStack {
             contentView
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .safeAreaInset(edge: .trailing, spacing: 0) {
+                    if showingGitSidebar {
+                        GitSidebarView(
+                            worktreePath: worktree.path ?? "",
+                            repository: worktree.repository!,
+                            repositoryManager: repositoryManager,
+                            onClose: { showingGitSidebar = false },
+                            gitStatus: gitRepositoryService.currentStatus,
+                            isOperationPending: gitRepositoryService.isOperationPending,
+                            onStageFile: stageFile,
+                            onUnstageFile: unstageFile,
+                            onStageAll: stageAllFiles,
+                            onUnstageAll: unstageAllFiles,
+                            onCommit: commitChanges,
+                            onAmendCommit: amendCommit,
+                            onCommitWithSignoff: commitWithSignoff,
+                            onSwitchBranch: switchBranch,
+                            onCreateBranch: createBranch,
+                            onFetch: fetchChanges,
+                            onPull: pullChanges,
+                            onPush: pushChanges
+                        )
+                        .frame(width: sidebarWidth)
+                        .id(gitRepositoryService.currentStatus.id)
+                        .transition(.move(edge: .trailing))
+                    }
+                }
+                .animation(.easeInOut(duration: 0.2), value: showingGitSidebar)
             .navigationTitle(worktree.branch ?? String(localized: "worktree.session.worktree"))
             .toolbarBackground(.visible, for: .windowToolbar)
+            .toast()
             .toolbar {
                 ToolbarItem(placement: .automatic) {
                     Picker(String(localized: "worktree.session.tab"), selection: $selectedTab) {
@@ -169,110 +217,33 @@ struct WorktreeDetailView: View {
                 appAndGitToolbarItems
             }
             .task {
-                await loadGitStatus()
-                startPeriodicRefresh()
+                await setupGitMonitoring()
             }
-            .onDisappear {
-                gitStatusTimer?.invalidate()
-                gitStatusTimer = nil
-            }
-        }
-    }
-
-    private func startPeriodicRefresh() {
-        gitStatusTimer?.invalidate()
-        gitStatusTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
-            Task {
-                await loadGitStatus()
-            }
-        }
-    }
-
-    private func loadGitStatus() async {
-        isLoadingGitStatus = true
-        defer { isLoadingGitStatus = false }
-
-        guard let path = worktree.path else { return }
-
-        do {
-            // Check if repo has any commits (HEAD exists)
-            let revParseProcess = Process()
-            revParseProcess.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-            revParseProcess.arguments = ["rev-parse", "--verify", "HEAD"]
-            revParseProcess.currentDirectoryURL = URL(fileURLWithPath: path)
-
-            let nullPipe = Pipe()
-            revParseProcess.standardOutput = nullPipe
-            revParseProcess.standardError = nullPipe
-
-            try revParseProcess.run()
-            revParseProcess.waitUntilExit()
-
-            let hasCommits = revParseProcess.terminationStatus == 0
-
-            var additions = 0
-            var deletions = 0
-
-            if hasCommits {
-                // Get numstat for additions/deletions (both staged and unstaged)
-                let diffProcess = Process()
-                diffProcess.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-                diffProcess.arguments = ["diff", "--numstat", "HEAD"]
-                diffProcess.currentDirectoryURL = URL(fileURLWithPath: path)
-
-                let diffPipe = Pipe()
-                diffProcess.standardOutput = diffPipe
-                let errorPipe = Pipe()
-                diffProcess.standardError = errorPipe
-
-                try diffProcess.run()
-                diffProcess.waitUntilExit()
-
-                let diffData = diffPipe.fileHandleForReading.readDataToEndOfFile()
-                let diffOutput = String(data: diffData, encoding: .utf8) ?? ""
-
-                for line in diffOutput.components(separatedBy: .newlines) {
-                    let parts = line.split(separator: "\t")
-                    if parts.count >= 2 {
-                        if let add = Int(parts[0]) {
-                            additions += add
-                        }
-                        if let del = Int(parts[1]) {
-                            deletions += del
-                        }
-                    }
+            .onChange(of: worktree.id) { newId in
+                Task {
+                    await setupGitMonitoring()
                 }
             }
-
-            // Get status for new/untracked files and staged additions
-            let statusProcess = Process()
-            statusProcess.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-            statusProcess.arguments = ["status", "--porcelain"]
-            statusProcess.currentDirectoryURL = URL(fileURLWithPath: path)
-
-            let statusPipe = Pipe()
-            statusProcess.standardOutput = statusPipe
-
-            try statusProcess.run()
-            statusProcess.waitUntilExit()
-
-            let statusData = statusPipe.fileHandleForReading.readDataToEndOfFile()
-            let statusOutput = String(data: statusData, encoding: .utf8) ?? ""
-
-            let lines = statusOutput.components(separatedBy: .newlines)
-
-            // Count untracked files (??), added files (A ), and new files in index (AM, A )
-            let untrackedCount = lines.filter { $0.hasPrefix("??") || $0.hasPrefix("A ") || $0.hasPrefix("AM") }.count
-
-            await MainActor.run {
-                gitAdditions = additions
-                gitDeletions = deletions
-                gitUntrackedFiles = untrackedCount
+            .onDisappear {
+                gitIndexWatcher?.stopWatching()
             }
-        } catch {
-            logger.error("Failed to load git status: \(error.localizedDescription)")
         }
     }
+
+    private func setupGitMonitoring() async {
+        guard let worktreePath = worktree.path else { return }
+
+        // Initial load
+        gitRepositoryService.reloadStatus()
+
+        // Setup file system watcher (now a regular class, non-blocking)
+        let watcher = GitIndexWatcher(worktreePath: worktreePath)
+        watcher.startWatching { [weak gitRepositoryService] in
+            gitRepositoryService?.reloadStatus()
+        }
+        gitIndexWatcher = watcher
+    }
+
 
     private func closeChatSession(_ session: ChatSession) {
         guard let context = worktree.managedObjectContext else { return }
@@ -385,11 +356,201 @@ struct WorktreeDetailView: View {
             logger.error("Failed to create terminal session: \(error.localizedDescription)")
         }
     }
+
+    // MARK: - Git Operations
+
+    private func stageFile(_ file: String) {
+        gitRepositoryService.stageFile(file) { error in
+            ToastManager.shared.show("Failed to stage file", type: .error)
+            print("Failed to stage file: \(error)")
+        }
+    }
+
+    private func unstageFile(_ file: String) {
+        gitRepositoryService.unstageFile(file) { error in
+            ToastManager.shared.show("Failed to unstage file", type: .error)
+            print("Failed to unstage file: \(error)")
+        }
+    }
+
+    private func stageAllFiles(onComplete: @escaping () -> Void) {
+        gitRepositoryService.stageAll(
+            onSuccess: {
+                onComplete()
+            },
+            onError: { error in
+                ToastManager.shared.show("Failed to stage files", type: .error)
+                print("Failed to stage all files: \(error)")
+            }
+        )
+    }
+
+    private func commitChanges(_ message: String) {
+        ToastManager.shared.showLoading("Committing changes...")
+        gitRepositoryService.commit(message: message,
+            onSuccess: {
+                ToastManager.shared.show("Changes committed", type: .success)
+            },
+            onError: { error in
+                ToastManager.shared.show("Commit failed: \(error.localizedDescription)", type: .error, duration: 5.0)
+                print("Failed to commit changes: \(error)")
+            }
+        )
+    }
+
+    private func amendCommit(_ message: String) {
+        ToastManager.shared.showLoading("Amending commit...")
+        gitRepositoryService.amendCommit(message: message,
+            onSuccess: {
+                ToastManager.shared.show("Commit amended", type: .success)
+            },
+            onError: { error in
+                ToastManager.shared.show("Amend failed: \(error.localizedDescription)", type: .error, duration: 5.0)
+                print("Failed to amend commit: \(error)")
+            }
+        )
+    }
+
+    private func commitWithSignoff(_ message: String) {
+        ToastManager.shared.showLoading("Committing with sign-off...")
+        gitRepositoryService.commitWithSignoff(message: message,
+            onSuccess: {
+                ToastManager.shared.show("Changes committed", type: .success)
+            },
+            onError: { error in
+                ToastManager.shared.show("Commit failed: \(error.localizedDescription)", type: .error, duration: 5.0)
+                print("Failed to commit with signoff: \(error)")
+            }
+        )
+    }
+
+    private func switchBranch(_ branch: String) {
+        gitRepositoryService.checkoutBranch(branch) { error in
+            ToastManager.shared.show("Failed to switch branch: \(error.localizedDescription)", type: .error, duration: 5.0)
+            print("Failed to switch branch: \(error)")
+        }
+
+        // Update Core Data with new branch info
+        if let repository = worktree.repository {
+            Task {
+                try? await repositoryManager.refreshRepository(repository)
+            }
+        }
+    }
+
+    private func createBranch(_ name: String) {
+        gitRepositoryService.createBranch(name) { error in
+            ToastManager.shared.show("Failed to create branch: \(error.localizedDescription)", type: .error, duration: 5.0)
+            print("Failed to create branch: \(error)")
+        }
+
+        // Update Core Data with new branch info
+        if let repository = worktree.repository {
+            Task {
+                try? await repositoryManager.refreshRepository(repository)
+            }
+        }
+    }
+
+    private func unstageAllFiles() {
+        gitRepositoryService.unstageAll { error in
+            ToastManager.shared.show("Failed to unstage files", type: .error)
+            print("Failed to unstage all files: \(error)")
+        }
+    }
+
+    private func fetchChanges() {
+        ToastManager.shared.showLoading("Fetching changes...")
+        gitRepositoryService.fetch(
+            onSuccess: {
+                ToastManager.shared.show("Fetch completed successfully", type: .success)
+            },
+            onError: { error in
+                ToastManager.shared.show("Fetch failed: \(error.localizedDescription)", type: .error, duration: 5.0)
+                print("Failed to fetch changes: \(error)")
+            }
+        )
+
+        // Update Core Data with new remote info
+        if let repository = worktree.repository {
+            Task {
+                try? await repositoryManager.refreshRepository(repository)
+            }
+        }
+    }
+
+    private func pullChanges() {
+        ToastManager.shared.showLoading("Pulling changes...")
+        gitRepositoryService.pull(
+            onSuccess: {
+                ToastManager.shared.show("Pull completed successfully", type: .success)
+            },
+            onError: { error in
+                ToastManager.shared.show("Pull failed: \(error.localizedDescription)", type: .error, duration: 5.0)
+                print("Failed to pull changes: \(error)")
+            }
+        )
+
+        // Update Core Data with new changes
+        if let repository = worktree.repository {
+            Task {
+                try? await repositoryManager.refreshRepository(repository)
+            }
+        }
+    }
+
+    private func pushChanges() {
+        ToastManager.shared.showLoading("Checking remote...")
+
+        // Fetch first to check for remote changes
+        gitRepositoryService.fetch(
+            onSuccess: { [self] in
+                // After fetch, check if we're behind
+                let status = gitRepositoryService.currentStatus
+                if status.behindCount > 0 {
+                    ToastManager.shared.show("Remote has \(status.behindCount) new commit(s). Pull manually before pushing.", type: .error, duration: 5.0)
+                } else {
+                    // No remote changes, proceed with push
+                    ToastManager.shared.showLoading("Pushing changes...")
+                    gitRepositoryService.push(
+                        onSuccess: {
+                            ToastManager.shared.show("Push completed successfully", type: .success)
+                        },
+                        onError: { error in
+                            ToastManager.shared.show("Push failed: \(error.localizedDescription)", type: .error, duration: 5.0)
+                            print("Failed to push changes: \(error)")
+                        }
+                    )
+                }
+            },
+            onError: { error in
+                // Fetch failed, try push anyway
+                ToastManager.shared.showLoading("Pushing changes...")
+                gitRepositoryService.push(
+                    onSuccess: {
+                        ToastManager.shared.show("Push completed successfully", type: .success)
+                    },
+                    onError: { error in
+                        ToastManager.shared.show("Push failed: \(error.localizedDescription)", type: .error, duration: 5.0)
+                        print("Failed to push changes: \(error)")
+                    }
+                )
+            }
+        )
+
+        // Update Core Data with new remote info
+        if let repository = worktree.repository {
+            Task {
+                try? await repositoryManager.refreshRepository(repository)
+            }
+        }
+    }
 }
 
 struct DetailsTabView: View {
     @ObservedObject var worktree: Worktree
     @ObservedObject var repositoryManager: RepositoryManager
+    var onWorktreeDeleted: ((Worktree?) -> Void)?
 
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.aizen", category: "DetailsTabView")
     @State private var currentBranch = ""
@@ -617,7 +778,35 @@ struct DetailsTabView: View {
     private func deleteWorktree() {
         Task {
             do {
+                // Get all worktrees from the repository
+                guard let repository = worktree.repository else { return }
+                let allWorktrees = ((repository.worktrees as? Set<Worktree>) ?? []).sorted { wt1, wt2 in
+                    if wt1.isPrimary != wt2.isPrimary {
+                        return wt1.isPrimary
+                    }
+                    return (wt1.branch ?? "") < (wt2.branch ?? "")
+                }
+
+                // Find next worktree to select
+                let nextWorktree: Worktree?
+                if let currentIndex = allWorktrees.firstIndex(where: { $0.id == worktree.id }) {
+                    // Try next worktree, then previous, then nil
+                    if currentIndex + 1 < allWorktrees.count {
+                        nextWorktree = allWorktrees[currentIndex + 1]
+                    } else if currentIndex > 0 {
+                        nextWorktree = allWorktrees[currentIndex - 1]
+                    } else {
+                        nextWorktree = nil
+                    }
+                } else {
+                    nextWorktree = nil
+                }
+
                 try await repositoryManager.deleteWorktree(worktree, force: hasUnsavedChanges)
+
+                await MainActor.run {
+                    onWorktreeDeleted?(nextWorktree)
+                }
             } catch {
                 await MainActor.run {
                     errorMessage = error.localizedDescription

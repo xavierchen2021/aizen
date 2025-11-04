@@ -27,6 +27,11 @@ struct ContentView: View {
     @AppStorage("hasShownOnboarding") private var hasShownOnboarding = false
     @State private var showingOnboarding = false
 
+    // Persistent selection storage
+    @AppStorage("selectedWorkspaceId") private var selectedWorkspaceId: String?
+    @AppStorage("selectedRepositoryId") private var selectedRepositoryId: String?
+    @AppStorage("selectedWorktreeId") private var selectedWorktreeId: String?
+
     init(context: NSManagedObjectContext) {
         _repositoryManager = StateObject(wrappedValue: RepositoryManager(viewContext: context))
     }
@@ -66,8 +71,12 @@ struct ContentView: View {
             if let worktree = selectedWorktree {
                 WorktreeDetailView(
                     worktree: worktree,
-                    repositoryManager: repositoryManager
+                    repositoryManager: repositoryManager,
+                    onWorktreeDeleted: { nextWorktree in
+                        selectedWorktree = nextWorktree
+                    }
                 )
+                .id(worktree.id)
             } else {
                 placeholderView(
                     titleKey: "contentView.selectWorktree",
@@ -92,23 +101,46 @@ struct ContentView: View {
             OnboardingView()
         }
         .onAppear {
+            // Restore selected workspace from persistent storage
             if selectedWorkspace == nil {
-                selectedWorkspace = workspaces.first
+                if let workspaceId = selectedWorkspaceId,
+                   let uuid = UUID(uuidString: workspaceId),
+                   let workspace = workspaces.first(where: { $0.id == uuid }) {
+                    selectedWorkspace = workspace
+                } else {
+                    selectedWorkspace = workspaces.first
+                }
             }
+
+            // Restore selected repository from persistent storage
+            if selectedRepository == nil,
+               let repositoryId = selectedRepositoryId,
+               let uuid = UUID(uuidString: repositoryId),
+               let workspace = selectedWorkspace {
+                let repositories = (workspace.repositories as? Set<Repository>) ?? []
+                selectedRepository = repositories.first(where: { $0.id == uuid })
+            }
+
+            // Restore selected worktree from persistent storage
+            if selectedWorktree == nil,
+               let worktreeId = selectedWorktreeId,
+               let uuid = UUID(uuidString: worktreeId),
+               let repository = selectedRepository {
+                let worktrees = (repository.worktrees as? Set<Worktree>) ?? []
+                selectedWorktree = worktrees.first(where: { $0.id == uuid })
+            }
+
             if !hasShownOnboarding {
                 showingOnboarding = true
                 hasShownOnboarding = true
             }
         }
-        .onChange(of: selectedWorktree) { newValue in
-            if let newWorktree = newValue, previousWorktree != newWorktree {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    columnVisibility = .doubleColumn
-                }
-                previousWorktree = newWorktree
-            }
+        .onChange(of: selectedWorkspace) { newValue in
+            selectedWorkspaceId = newValue?.id?.uuidString
         }
         .onChange(of: selectedRepository) { newValue in
+            selectedRepositoryId = newValue?.id?.uuidString
+
             if let repo = newValue, repo.isDeleted || repo.isFault {
                 selectedRepository = nil
                 selectedWorktree = nil
@@ -116,6 +148,16 @@ struct ContentView: View {
                 // Auto-select primary worktree when repository changes
                 let worktrees = (repo.worktrees as? Set<Worktree>) ?? []
                 selectedWorktree = worktrees.first(where: { $0.isPrimary })
+            }
+        }
+        .onChange(of: selectedWorktree) { newValue in
+            selectedWorktreeId = newValue?.id?.uuidString
+
+            if let newWorktree = newValue, previousWorktree != newWorktree {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    columnVisibility = .doubleColumn
+                }
+                previousWorktree = newWorktree
             }
         }
     }

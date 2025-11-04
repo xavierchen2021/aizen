@@ -63,7 +63,9 @@ struct WorktreeListView: View {
                     WorktreeListRowView(
                         worktree: worktree,
                         isSelected: selectedWorktree?.id == worktree.id,
-                        repositoryManager: repositoryManager
+                        repositoryManager: repositoryManager,
+                        allWorktrees: worktrees,
+                        selectedWorktree: $selectedWorktree
                     )
                     .onTapGesture {
                         selectedWorktree = worktree
@@ -101,6 +103,8 @@ struct WorktreeListRowView: View {
     @ObservedObject var worktree: Worktree
     let isSelected: Bool
     @ObservedObject var repositoryManager: RepositoryManager
+    let allWorktrees: [Worktree]
+    @Binding var selectedWorktree: Worktree?
 
     @State private var showingDetails = false
     @State private var showingDeleteConfirmation = false
@@ -242,7 +246,27 @@ struct WorktreeListRowView: View {
     private func deleteWorktree() {
         Task {
             do {
-                try await repositoryManager.deleteWorktree(worktree, force: hasUnsavedChanges)
+                // Find closest worktree to select after deletion
+                if let currentIndex = allWorktrees.firstIndex(where: { $0.id == worktree.id }) {
+                    let nextWorktree: Worktree?
+
+                    // Try next worktree, then previous, then nil
+                    if currentIndex + 1 < allWorktrees.count {
+                        nextWorktree = allWorktrees[currentIndex + 1]
+                    } else if currentIndex > 0 {
+                        nextWorktree = allWorktrees[currentIndex - 1]
+                    } else {
+                        nextWorktree = nil
+                    }
+
+                    try await repositoryManager.deleteWorktree(worktree, force: hasUnsavedChanges)
+
+                    await MainActor.run {
+                        selectedWorktree = nextWorktree
+                    }
+                } else {
+                    try await repositoryManager.deleteWorktree(worktree, force: hasUnsavedChanges)
+                }
             } catch {
                 await MainActor.run {
                     errorMessage = error.localizedDescription

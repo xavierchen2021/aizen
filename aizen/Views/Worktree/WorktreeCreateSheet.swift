@@ -14,11 +14,10 @@ struct WorktreeCreateSheet: View {
 
     @State private var worktreeName = ""
     @State private var selectedBranch: BranchInfo?
-    @State private var branches: [BranchInfo] = []
-    @State private var isLoadingBranches = true
     @State private var isProcessing = false
     @State private var errorMessage: String?
     @State private var validationWarning: String?
+    @State private var showingBranchSelector = false
 
     private var currentBranch: String {
         // Get main branch from repository worktrees
@@ -31,8 +30,13 @@ struct WorktreeCreateSheet: View {
         return worktrees.compactMap { $0.branch }
     }
 
-    private var existingBranchNames: [String] {
-        branches.map { $0.name }
+    private var defaultBaseBranch: String {
+        // Try to find main or master branch
+        let worktrees = (repository.worktrees as? Set<Worktree>) ?? []
+        if let mainWorktree = worktrees.first(where: { $0.isPrimary }) {
+            return mainWorktree.branch ?? "main"
+        }
+        return "main"
     }
 
     var body: some View {
@@ -104,18 +108,11 @@ struct WorktreeCreateSheet: View {
                     Text("worktree.create.baseBranch", bundle: .main)
                         .font(.headline)
 
-                    if isLoadingBranches {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Picker(String(localized: "worktree.create.baseBranch"), selection: $selectedBranch) {
-                            ForEach(branches, id: \.id) { branch in
-                                Text(branch.name)
-                                    .tag(branch as BranchInfo?)
-                            }
-                        }
-                        .labelsHidden()
-                    }
+                    BranchSelectorButton(
+                        selectedBranch: selectedBranch,
+                        defaultBranch: defaultBaseBranch,
+                        isPresented: $showingBranchSelector
+                    )
 
                     Text("worktree.create.baseBranchHelp", bundle: .main)
                         .font(.caption)
@@ -166,31 +163,15 @@ struct WorktreeCreateSheet: View {
         }
         .frame(width: 450)
         .frame(minHeight: 300, maxHeight: 350)
-        .onAppear {
-            loadBranches()
-            suggestWorktreeName()
+        .sheet(isPresented: $showingBranchSelector) {
+            BranchSelectorView(
+                repository: repository,
+                repositoryManager: repositoryManager,
+                selectedBranch: $selectedBranch
+            )
         }
-    }
-
-    private func loadBranches() {
-        isLoadingBranches = true
-
-        Task {
-            do {
-                let loadedBranches = try await repositoryManager.getBranches(for: repository)
-                await MainActor.run {
-                    // Only local branches
-                    branches = loadedBranches.filter { !$0.isRemote }
-                    // Select current branch by default
-                    selectedBranch = branches.first(where: { $0.name == currentBranch }) ?? branches.first
-                    isLoadingBranches = false
-                }
-            } catch {
-                await MainActor.run {
-                    errorMessage = String(localized: "worktree.create.failedLoadBranches \(error.localizedDescription)")
-                    isLoadingBranches = false
-                }
-            }
+        .onAppear {
+            suggestWorktreeName()
         }
     }
 
@@ -199,8 +180,8 @@ struct WorktreeCreateSheet: View {
     }
 
     private func generateRandomName() {
-        // Combine both worktree names and branch names to avoid conflicts
-        let excludedNames = Set(existingWorktreeNames + existingBranchNames)
+        // Only exclude existing worktree names
+        let excludedNames = Set(existingWorktreeNames)
         worktreeName = WorkspaceNameGenerator.generateUniqueName(excluding: Array(excludedNames))
             .lowercased()
             .replacingOccurrences(of: " ", with: "-")
@@ -214,7 +195,8 @@ struct WorktreeCreateSheet: View {
             return
         }
 
-        if existingBranchNames.contains(worktreeName) {
+        // Check against existing worktree names
+        if existingWorktreeNames.contains(worktreeName) {
             validationWarning = String(localized: "worktree.create.branchExists \(worktreeName)")
         } else {
             validationWarning = nil
@@ -223,18 +205,17 @@ struct WorktreeCreateSheet: View {
 
     private func createWorktree() {
         guard !isProcessing, !worktreeName.isEmpty else { return }
-        guard let selectedBranch = selectedBranch else {
-            errorMessage = String(localized: "worktree.create.selectBaseBranch")
-            return
-        }
-        guard let repoPath = repository.path else {
-            errorMessage = String(localized: "worktree.create.invalidRepoPath")
-            return
+
+        // Use selectedBranch if available, otherwise use default branch
+        let baseBranchName: String
+        if let selected = selectedBranch {
+            baseBranchName = selected.name
+        } else {
+            baseBranchName = defaultBaseBranch
         }
 
-        // Check if branch name already exists
-        if existingBranchNames.contains(worktreeName) {
-            errorMessage = String(localized: "worktree.create.branchExistsChooseDifferent \(worktreeName)")
+        guard let repoPath = repository.path else {
+            errorMessage = String(localized: "worktree.create.invalidRepoPath")
             return
         }
 
@@ -254,7 +235,7 @@ struct WorktreeCreateSheet: View {
                     path: worktreePath,
                     branch: worktreeName,
                     createBranch: true,
-                    baseBranch: selectedBranch.name
+                    baseBranch: baseBranchName
                 )
 
                 await MainActor.run {
