@@ -13,6 +13,7 @@ struct ChatTabView: View {
     let worktree: Worktree
     @Binding var selectedSessionId: UUID?
 
+    @Environment(\.managedObjectContext) private var viewContext
     private let sessionManager = ChatSessionManager.shared
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.aizen", category: "ChatTabView")
     @State private var enabledAgents: [AgentMetadata] = []
@@ -31,7 +32,8 @@ struct ChatTabView: View {
                     ChatSessionView(
                         worktree: worktree,
                         session: session,
-                        sessionManager: sessionManager
+                        sessionManager: sessionManager,
+                        viewContext: viewContext
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .opacity(selectedSessionId == session.id ? 1 : 0)

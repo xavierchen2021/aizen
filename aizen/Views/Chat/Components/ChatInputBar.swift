@@ -7,8 +7,10 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import os.log
 
 struct ChatInputBar: View {
+    private let logger = Logger.chat
     @Binding var inputText: String
     @Binding var attachments: [URL]
     @Binding var isProcessing: Bool
@@ -110,7 +112,7 @@ struct ChatInputBar: View {
                                 permissionErrorMessage = recordingError.localizedDescription + "\n\nPlease enable Microphone and Speech Recognition permissions in System Settings."
                                 showingPermissionError = true
                             }
-                            print("Failed to start recording: \(error)")
+                            logger.error("Failed to start recording: \(error.localizedDescription)")
                         }
                     }
                 }) {

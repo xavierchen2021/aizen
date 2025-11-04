@@ -6,12 +6,15 @@
 //
 
 import Foundation
+import os.log
 
 // ACPClientDelegate is defined in ACPRequestRouter
 typealias ACPClientDelegate = ACPRequestDelegate
 
 actor ACPClient {
     // MARK: - Properties
+
+    private let logger = Logger.forCategory("ACPClient")
 
     private let processManager: ACPProcessManager
     private let requestRouter: ACPRequestRouter
@@ -341,7 +344,7 @@ actor ACPClient {
                 await handleIncomingRequest(request)
             }
         } catch {
-            print("ACPClient: Failed to decode message: \(error)")
+            logger.error("Failed to decode message: \(error)")
         }
     }
 
@@ -358,7 +361,7 @@ actor ACPClient {
             let response = try await requestRouter.routeRequest(request)
             try await sendSuccessResponse(requestId: request.id, result: response)
         } catch {
-            print("ACPClient: Error handling request \(request.method): \(error)")
+            logger.error("Error handling request \(request.method): \(error)")
 
             if let acpError = error as? ACPClientError, case .invalidResponse = acpError {
                 try? await sendErrorResponse(
@@ -391,7 +394,7 @@ actor ACPClient {
     }
 
     private func handleTermination(exitCode: Int32) async {
-        print("Agent process terminated with code: \(exitCode)")
+        logger.info("Agent process terminated with code: \(exitCode)")
 
         // Fail all pending requests
         for (_, continuation) in pendingRequests {

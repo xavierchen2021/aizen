@@ -7,8 +7,10 @@
 
 import SwiftUI
 import CoreData
+import os.log
 
 struct WorkspaceSidebarView: View {
+    private let logger = Logger.workspace
     let workspaces: [Workspace]
     @Binding var selectedWorkspace: Workspace?
     @Binding var selectedRepository: Repository?
@@ -227,6 +229,7 @@ struct WorkspaceSidebarView: View {
 }
 
 struct RepositoryRow: View {
+    private let logger = Logger.workspace
     @ObservedObject var repository: Repository
     let isSelected: Bool
     @Binding var selectedWorktree: Worktree?
@@ -341,7 +344,7 @@ struct RepositoryRow: View {
             do {
                 try repositoryManager.deleteRepository(repository)
             } catch {
-                print("Failed to delete repository: \(error)")
+                logger.error("Failed to delete repository: \(error.localizedDescription)")
             }
         }
     }
@@ -352,7 +355,7 @@ struct RepositoryRow: View {
             do {
                 try await repositoryManager.refreshRepository(repository)
             } catch {
-                print("Failed to refresh repository: \(error)")
+                logger.error("Failed to refresh repository: \(error.localizedDescription)")
             }
             isRefreshing = false
         }

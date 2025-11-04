@@ -6,8 +6,10 @@
 //
 
 import SwiftUI
+import os.log
 
 struct WorkspaceEditSheet: View {
+    private let logger = Logger.workspace
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var workspace: Workspace
     @ObservedObject var repositoryManager: RepositoryManager
@@ -110,7 +112,6 @@ struct WorkspaceEditSheet: View {
         .frame(width: 450)
         .frame(minHeight: 280, maxHeight: 400)
         .onAppear {
-            print("DEBUG: Editing workspace - name: \(workspace.name ?? "nil"), colorHex: \(workspace.colorHex ?? "nil")")
             workspaceName = workspace.name ?? ""
             if let colorHex = workspace.colorHex {
                 selectedColor = colorFromHex(colorHex)

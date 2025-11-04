@@ -10,6 +10,19 @@ import Foundation
 /// Actor responsible for handling terminal operations for agent sessions
 actor AgentTerminalDelegate {
 
+    // MARK: - Errors
+
+    enum TerminalError: LocalizedError {
+        case terminalNotFound(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .terminalNotFound(let id):
+                return "Terminal with ID '\(id)' not found"
+            }
+        }
+    }
+
     // MARK: - Private Properties
 
     private var terminals: [String: Process] = [:]
@@ -78,11 +91,7 @@ actor AgentTerminalDelegate {
     /// Get output from a terminal process
     func handleTerminalOutput(terminalId: TerminalId) async throws -> TerminalOutputResponse {
         guard let process = terminals[terminalId.value] else {
-            throw NSError(
-                domain: "AgentTerminalDelegate",
-                code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "Terminal not found"]
-            )
+            throw TerminalError.terminalNotFound(terminalId.value)
         }
 
         let output = terminalOutputs[terminalId.value] ?? ""

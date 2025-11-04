@@ -6,8 +6,10 @@
 //
 
 import SwiftUI
+import os.log
 
 struct AdvancedSettingsView: View {
+    private let logger = Logger.settings
     @Environment(\.managedObjectContext) private var viewContext
     @State private var showingResetConfirmation = false
 
@@ -51,7 +53,7 @@ struct AdvancedSettingsView: View {
             do {
                 try viewContext.execute(deleteRequest)
             } catch {
-                print("Failed to delete \(entity): \(error)")
+                logger.error("Failed to delete \(entity): \(error.localizedDescription)")
             }
         }
 

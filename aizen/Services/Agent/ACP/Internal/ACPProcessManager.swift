@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import os.log
 
 actor ACPProcessManager {
     // MARK: - Properties
@@ -19,6 +20,7 @@ actor ACPProcessManager {
 
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
+    private let logger = Logger.forCategory("ACPProcessManager")
 
     // Callback for incoming data
     private var onDataReceived: ((Data) async -> Void)?
@@ -204,7 +206,7 @@ actor ACPProcessManager {
     }
 
     private func handleTermination(exitCode: Int32) async {
-        print("Agent process terminated with code: \(exitCode)")
+        logger.info("Agent process terminated with code: \(exitCode)")
         await onTermination?(exitCode)
     }
 }

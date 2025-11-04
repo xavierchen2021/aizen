@@ -6,8 +6,10 @@
 //
 
 import SwiftUI
+import os.log
 
 struct AuthenticationSheet: View {
+    private let logger = Logger.chat
     @ObservedObject var session: AgentSession
     @Environment(\.dismiss) private var dismiss
     @State private var selectedMethodId: String?
@@ -88,7 +90,7 @@ struct AuthenticationSheet: View {
                         } catch {
                             await MainActor.run {
                                 isAuthenticating = false
-                                print("Skip auth failed: \(error)")
+                                logger.error("Skip auth failed: \(error.localizedDescription)")
                             }
                         }
                     }
@@ -196,7 +198,7 @@ struct AuthenticationSheet: View {
             } catch {
                 await MainActor.run {
                     isAuthenticating = false
-                    print("Authentication failed: \(error)")
+                    logger.error("Authentication failed: \(error.localizedDescription)")
                 }
             }
         }

@@ -6,8 +6,10 @@
 //
 
 import SwiftUI
+import os.log
 
 struct TerminalSettingsView: View {
+    private let logger = Logger.settings
     @Binding var fontName: String
     @Binding var fontSize: Double
     @AppStorage("terminalThemeName") private var themeName = "Catppuccin Mocha"
@@ -31,12 +33,12 @@ struct TerminalSettingsView: View {
 
     private func loadThemeNames() -> [String] {
         guard let themesPath = Self.themesPath else {
-            print("Error: Unable to locate themes directory")
+            logger.error("Unable to locate themes directory")
             return []
         }
 
         guard let themeFiles = try? FileManager.default.contentsOfDirectory(atPath: themesPath) else {
-            print("Error: Unable to read themes from \(themesPath)")
+            logger.error("Unable to read themes from \(themesPath)")
             return []
         }
 
