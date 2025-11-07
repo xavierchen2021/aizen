@@ -12,7 +12,11 @@ struct AgentSelectorMenu: View {
     let onAgentSelect: (String) -> Void
 
     @State private var enabledAgents: [AgentMetadata] = []
-    @State private var selectedAgentMetadata: AgentMetadata?
+
+    // Use computed property directly instead of state
+    private var selectedAgentMetadata: AgentMetadata? {
+        AgentRegistry.shared.getMetadata(for: selectedAgent)
+    }
 
     var body: some View {
         Menu {
@@ -45,22 +49,9 @@ struct AgentSelectorMenu: View {
         }
         .menuStyle(.borderlessButton)
         .buttonStyle(.plain)
-        .task {
-            await loadAgents()
+        .onAppear {
+            enabledAgents = AgentRegistry.shared.getEnabledAgents()
         }
-        .onChange(of: selectedAgent) { _ in
-            Task {
-                await loadSelectedAgentMetadata()
-            }
-        }
-    }
-
-    private func loadAgents() async {
-        enabledAgents = await AgentRegistry.shared.getEnabledAgents()
-        await loadSelectedAgentMetadata()
-    }
-
-    private func loadSelectedAgentMetadata() async {
-        selectedAgentMetadata = AgentRegistry.shared.getMetadata(for: selectedAgent)
+        .id(selectedAgent) // Force view recreation when selectedAgent changes
     }
 }

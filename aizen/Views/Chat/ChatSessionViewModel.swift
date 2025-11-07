@@ -234,6 +234,9 @@ class ChatSessionViewModel: ObservableObject {
         session.objectWillChange.send()
         worktree.objectWillChange.send()
 
+        // Trigger update for computed property selectedAgent
+        objectWillChange.send()
+
         do {
             try viewContext.save()
         } catch {
@@ -405,14 +408,22 @@ class ChatSessionViewModel: ObservableObject {
         session.permissionHandler.$showingPermissionAlert
             .receive(on: DispatchQueue.main)
             .sink { [weak self] showing in
-                self?.showingPermissionAlert = showing
+                guard let self = self else { return }
+                self.objectWillChange.send()
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    self.showingPermissionAlert = showing
+                }
             }
             .store(in: &cancellables)
 
         session.permissionHandler.$permissionRequest
             .receive(on: DispatchQueue.main)
             .sink { [weak self] request in
-                self?.currentPermissionRequest = request
+                guard let self = self else { return }
+                self.objectWillChange.send()
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    self.currentPermissionRequest = request
+                }
             }
             .store(in: &cancellables)
     }
