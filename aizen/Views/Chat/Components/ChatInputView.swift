@@ -23,7 +23,7 @@ struct CustomTextEditor: NSViewRepresentable {
         scrollView.scrollerStyle = .overlay
 
         textView.delegate = context.coordinator
-        textView.font = .systemFont(ofSize: 14)
+        textView.font = NSFont.systemFont(ofSize: 14)
         textView.isRichText = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
@@ -69,6 +69,11 @@ struct CustomTextEditor: NSViewRepresentable {
                     onSubmit()
                     return true
                 }
+            }
+            // Allow Shift+Tab to be handled by the app (for mode cycling)
+            if commandSelector == #selector(NSTextView.insertTab(_:)) && NSEvent.modifierFlags.contains(.shift) {
+                // Don't handle it here, let the system handle it
+                return false
             }
             return false
         }

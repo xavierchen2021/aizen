@@ -7,6 +7,7 @@
 
 import SwiftUI
 import os.log
+import Combine
 
 struct WorktreeDetailView: View {
     @ObservedObject var worktree: Worktree
@@ -16,20 +17,35 @@ struct WorktreeDetailView: View {
 
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.aizen", category: "WorktreeDetailView")
 
+    @StateObject private var viewModel: WorktreeViewModel
+
     @State private var selectedTab = "chat"
-    @State private var selectedChatSessionId: UUID?
-    @State private var selectedTerminalSessionId: UUID?
     @State private var lastOpenedApp: DetectedApp?
     @State private var showingGitSidebar = false
+    @State private var sidebarWidth: CGFloat = 350
     @StateObject private var gitRepositoryService: GitRepositoryService
     @State private var gitIndexWatcher: GitIndexWatcher?
-    @State private var sidebarWidth: CGFloat = 350
+    @State private var gitOperationHandler: GitOperationHandler?
 
     init(worktree: Worktree, repositoryManager: RepositoryManager, onWorktreeDeleted: ((Worktree?) -> Void)? = nil) {
         self.worktree = worktree
         self.repositoryManager = repositoryManager
         self.onWorktreeDeleted = onWorktreeDeleted
+        _viewModel = StateObject(wrappedValue: WorktreeViewModel(worktree: worktree, repositoryManager: repositoryManager))
         _gitRepositoryService = StateObject(wrappedValue: GitRepositoryService(worktreePath: worktree.path ?? ""))
+    }
+
+    private func ensureGitHandler() -> GitOperationHandler {
+        if let handler = gitOperationHandler {
+            return handler
+        }
+        let handler = GitOperationHandler(
+            gitService: gitRepositoryService,
+            repositoryManager: repositoryManager,
+            logger: logger
+        )
+        gitOperationHandler = handler
+        return handler
     }
 
     var chatSessions: [ChatSession] {
@@ -60,12 +76,12 @@ struct WorktreeDetailView: View {
             if selectedTab == "chat" {
                 ChatTabView(
                     worktree: worktree,
-                    selectedSessionId: $selectedChatSessionId
+                    selectedSessionId: $viewModel.selectedChatSessionId
                 )
             } else {
                 TerminalTabView(
                     worktree: worktree,
-                    selectedSessionId: $selectedTerminalSessionId,
+                    selectedSessionId: $viewModel.selectedTerminalSessionId,
                     repositoryManager: repositoryManager
                 )
             }
@@ -80,11 +96,19 @@ struct WorktreeDetailView: View {
                 selectedTab: selectedTab,
                 chatSessions: chatSessions,
                 terminalSessions: terminalSessions,
-                selectedChatSessionId: $selectedChatSessionId,
-                selectedTerminalSessionId: $selectedTerminalSessionId,
+                selectedChatSessionId: $viewModel.selectedChatSessionId,
+                selectedTerminalSessionId: $viewModel.selectedTerminalSessionId,
                 onCloseChatSession: closeChatSession,
                 onCloseTerminalSession: closeTerminalSession
             )
+        }
+        
+        if #available(macOS 26.0, *) {
+            ToolbarSpacer(.fixed)
+        } else {
+            ToolbarItem(placement: .automatic) {
+                Spacer().frame(width: 16).fixedSize()
+            }
         }
 
         ToolbarItem(placement: .automatic) {
@@ -124,7 +148,7 @@ struct WorktreeDetailView: View {
             ToolbarSpacer(.fixed)
         } else {
             ToolbarItem(placement: .automatic) {
-                Spacer().fixedSize()
+                Spacer().frame(width: 16).fixedSize()
             }
         }
 
@@ -194,14 +218,6 @@ struct WorktreeDetailView: View {
                 }
 
 
-                if #available(macOS 26.0, *) {
-                    ToolbarSpacer()
-                } else {
-                    ToolbarItem(placement: .automatic) {
-                        Spacer().fixedSize()
-                    }
-                }
-
                 if hasActiveSessions {
                     sessionToolbarItems
                 }
@@ -210,7 +226,7 @@ struct WorktreeDetailView: View {
                     ToolbarSpacer()
                 } else {
                     ToolbarItem(placement: .automatic) {
-                        Spacer().fixedSize()
+                        Spacer().frame(width: 16).fixedSize()
                     }
                 }
 
@@ -252,14 +268,14 @@ struct WorktreeDetailView: View {
             ChatSessionManager.shared.removeAgentSession(for: id)
         }
 
-        if selectedChatSessionId == session.id {
+        if viewModel.selectedChatSessionId == session.id {
             if let index = chatSessions.firstIndex(where: { $0.id == session.id }) {
                 if index > 0 {
-                    selectedChatSessionId = chatSessions[index - 1].id
+                    viewModel.selectedChatSessionId = chatSessions[index - 1].id
                 } else if chatSessions.count > 1 {
-                    selectedChatSessionId = chatSessions[index + 1].id
+                    viewModel.selectedChatSessionId = chatSessions[index + 1].id
                 } else {
-                    selectedChatSessionId = nil
+                    viewModel.selectedChatSessionId = nil
                 }
             }
         }
@@ -280,14 +296,14 @@ struct WorktreeDetailView: View {
             TerminalSessionManager.shared.removeAllTerminals(for: id)
         }
 
-        if selectedTerminalSessionId == session.id {
+        if viewModel.selectedTerminalSessionId == session.id {
             if let index = terminalSessions.firstIndex(where: { $0.id == session.id }) {
                 if index > 0 {
-                    selectedTerminalSessionId = terminalSessions[index - 1].id
+                    viewModel.selectedTerminalSessionId = terminalSessions[index - 1].id
                 } else if terminalSessions.count > 1 {
-                    selectedTerminalSessionId = terminalSessions[index + 1].id
+                    viewModel.selectedTerminalSessionId = terminalSessions[index + 1].id
                 } else {
-                    selectedTerminalSessionId = nil
+                    viewModel.selectedTerminalSessionId = nil
                 }
             }
         }
@@ -332,7 +348,7 @@ struct WorktreeDetailView: View {
 
         do {
             try context.save()
-            selectedChatSessionId = session.id
+            viewModel.selectedChatSessionId = session.id
         } catch {
             logger.error("Failed to create chat session: \(error.localizedDescription)")
         }
@@ -351,7 +367,7 @@ struct WorktreeDetailView: View {
 
         do {
             try context.save()
-            selectedTerminalSessionId = session.id
+            viewModel.selectedTerminalSessionId = session.id
         } catch {
             logger.error("Failed to create terminal session: \(error.localizedDescription)")
         }
@@ -360,190 +376,51 @@ struct WorktreeDetailView: View {
     // MARK: - Git Operations
 
     private func stageFile(_ file: String) {
-        gitRepositoryService.stageFile(file) { error in
-            ToastManager.shared.show("Failed to stage file", type: .error)
-            logger.error("Failed to stage file: \(error)")
-        }
+        ensureGitHandler().stageFile(file)
     }
 
     private func unstageFile(_ file: String) {
-        gitRepositoryService.unstageFile(file) { error in
-            ToastManager.shared.show("Failed to unstage file", type: .error)
-            logger.error("Failed to unstage file: \(error)")
-        }
+        ensureGitHandler().unstageFile(file)
     }
 
     private func stageAllFiles(onComplete: @escaping () -> Void) {
-        gitRepositoryService.stageAll(
-            onSuccess: {
-                onComplete()
-            },
-            onError: { error in
-                ToastManager.shared.show("Failed to stage files", type: .error)
-                logger.error("Failed to stage all files: \(error)")
-            }
-        )
-    }
-
-    private func commitChanges(_ message: String) {
-        ToastManager.shared.showLoading("Committing changes...")
-        gitRepositoryService.commit(message: message,
-            onSuccess: {
-                ToastManager.shared.show("Changes committed", type: .success)
-            },
-            onError: { error in
-                ToastManager.shared.show("Commit failed: \(error.localizedDescription)", type: .error, duration: 5.0)
-                logger.error("Failed to commit changes: \(error)")
-            }
-        )
-    }
-
-    private func amendCommit(_ message: String) {
-        ToastManager.shared.showLoading("Amending commit...")
-        gitRepositoryService.amendCommit(message: message,
-            onSuccess: {
-                ToastManager.shared.show("Commit amended", type: .success)
-            },
-            onError: { error in
-                ToastManager.shared.show("Amend failed: \(error.localizedDescription)", type: .error, duration: 5.0)
-                logger.error("Failed to amend commit: \(error)")
-            }
-        )
-    }
-
-    private func commitWithSignoff(_ message: String) {
-        ToastManager.shared.showLoading("Committing with sign-off...")
-        gitRepositoryService.commitWithSignoff(message: message,
-            onSuccess: {
-                ToastManager.shared.show("Changes committed", type: .success)
-            },
-            onError: { error in
-                ToastManager.shared.show("Commit failed: \(error.localizedDescription)", type: .error, duration: 5.0)
-                logger.error("Failed to commit with signoff: \(error)")
-            }
-        )
-    }
-
-    private func switchBranch(_ branch: String) {
-        gitRepositoryService.checkoutBranch(branch) { error in
-            ToastManager.shared.show("Failed to switch branch: \(error.localizedDescription)", type: .error, duration: 5.0)
-            logger.error("Failed to switch branch: \(error)")
-        }
-
-        // Update Core Data with new branch info
-        if let repository = worktree.repository {
-            Task {
-                try? await repositoryManager.refreshRepository(repository)
-            }
-        }
-    }
-
-    private func createBranch(_ name: String) {
-        gitRepositoryService.createBranch(name) { error in
-            ToastManager.shared.show("Failed to create branch: \(error.localizedDescription)", type: .error, duration: 5.0)
-            logger.error("Failed to create branch: \(error)")
-        }
-
-        // Update Core Data with new branch info
-        if let repository = worktree.repository {
-            Task {
-                try? await repositoryManager.refreshRepository(repository)
-            }
-        }
+        ensureGitHandler().stageAll(onComplete: onComplete)
     }
 
     private func unstageAllFiles() {
-        gitRepositoryService.unstageAll { error in
-            ToastManager.shared.show("Failed to unstage files", type: .error)
-            logger.error("Failed to unstage all files: \(error)")
-        }
+        ensureGitHandler().unstageAll()
+    }
+
+    private func commitChanges(_ message: String) {
+        ensureGitHandler().commit(message)
+    }
+
+    private func amendCommit(_ message: String) {
+        ensureGitHandler().amendCommit(message)
+    }
+
+    private func commitWithSignoff(_ message: String) {
+        ensureGitHandler().commitWithSignoff(message)
+    }
+
+    private func switchBranch(_ branch: String) {
+        ensureGitHandler().switchBranch(branch, repository: worktree.repository)
+    }
+
+    private func createBranch(_ name: String) {
+        ensureGitHandler().createBranch(name, repository: worktree.repository)
     }
 
     private func fetchChanges() {
-        ToastManager.shared.showLoading("Fetching changes...")
-        gitRepositoryService.fetch(
-            onSuccess: {
-                ToastManager.shared.show("Fetch completed successfully", type: .success)
-            },
-            onError: { error in
-                ToastManager.shared.show("Fetch failed: \(error.localizedDescription)", type: .error, duration: 5.0)
-                logger.error("Failed to fetch changes: \(error)")
-            }
-        )
-
-        // Update Core Data with new remote info
-        if let repository = worktree.repository {
-            Task {
-                try? await repositoryManager.refreshRepository(repository)
-            }
-        }
+        ensureGitHandler().fetch(repository: worktree.repository)
     }
 
     private func pullChanges() {
-        ToastManager.shared.showLoading("Pulling changes...")
-        gitRepositoryService.pull(
-            onSuccess: {
-                ToastManager.shared.show("Pull completed successfully", type: .success)
-            },
-            onError: { error in
-                ToastManager.shared.show("Pull failed: \(error.localizedDescription)", type: .error, duration: 5.0)
-                logger.error("Failed to pull changes: \(error)")
-            }
-        )
-
-        // Update Core Data with new changes
-        if let repository = worktree.repository {
-            Task {
-                try? await repositoryManager.refreshRepository(repository)
-            }
-        }
+        ensureGitHandler().pull(repository: worktree.repository)
     }
 
     private func pushChanges() {
-        ToastManager.shared.showLoading("Checking remote...")
-
-        // Fetch first to check for remote changes
-        gitRepositoryService.fetch(
-            onSuccess: { [self] in
-                // After fetch, check if we're behind
-                let status = gitRepositoryService.currentStatus
-                if status.behindCount > 0 {
-                    ToastManager.shared.show("Remote has \(status.behindCount) new commit(s). Pull manually before pushing.", type: .error, duration: 5.0)
-                } else {
-                    // No remote changes, proceed with push
-                    ToastManager.shared.showLoading("Pushing changes...")
-                    gitRepositoryService.push(
-                        onSuccess: {
-                            ToastManager.shared.show("Push completed successfully", type: .success)
-                        },
-                        onError: { error in
-                            ToastManager.shared.show("Push failed: \(error.localizedDescription)", type: .error, duration: 5.0)
-                            logger.error("Failed to push changes: \(error)")
-                        }
-                    )
-                }
-            },
-            onError: { error in
-                // Fetch failed, try push anyway
-                ToastManager.shared.showLoading("Pushing changes...")
-                gitRepositoryService.push(
-                    onSuccess: {
-                        ToastManager.shared.show("Push completed successfully", type: .success)
-                    },
-                    onError: { error in
-                        ToastManager.shared.show("Push failed: \(error.localizedDescription)", type: .error, duration: 5.0)
-                        logger.error("Failed to push changes: \(error)")
-                    }
-                )
-            }
-        )
-
-        // Update Core Data with new remote info
-        if let repository = worktree.repository {
-            Task {
-                try? await repositoryManager.refreshRepository(repository)
-            }
-        }
+        ensureGitHandler().push(repository: worktree.repository)
     }
 }
 

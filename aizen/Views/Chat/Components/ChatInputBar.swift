@@ -22,6 +22,7 @@ struct ChatInputBar: View {
 
     let commandSuggestions: [AvailableCommand]
     let session: AgentSession?
+    let currentModeId: String?
     let selectedAgent: String
     let isSessionReady: Bool
     let audioService: AudioService
@@ -33,6 +34,10 @@ struct ChatInputBar: View {
     @State private var isHoveringInput = false
     @State private var dashPhase: CGFloat = 0
     @State private var gradientRotation: Double = 0
+
+    private let gradientColors: [Color] = [
+        .accentColor.opacity(0.7), .accentColor.opacity(0.4), .accentColor.opacity(0.7)
+    ]
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -153,26 +158,26 @@ struct ChatInputBar: View {
         .padding(.vertical, 8)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: inputCornerRadius, style: .continuous))
         .overlay {
-            if isProcessing && session?.currentThought != nil {
+            if isProcessing {
                 RoundedRectangle(cornerRadius: inputCornerRadius, style: .continuous)
                     .strokeBorder(
                         AngularGradient(
-                            colors: [.blue, .purple, .blue],
+                            colors: gradientColors,
                             center: .center,
                             angle: .degrees(gradientRotation)
                         ),
                         lineWidth: 2
                     )
-            } else if session?.currentModeId != "plan" {
+            } else if currentModeId != "plan" {
                 RoundedRectangle(cornerRadius: inputCornerRadius, style: .continuous)
                     .strokeBorder(.separator.opacity(isHoveringInput ? 0.5 : 0.2), lineWidth: 0.5)
             }
 
-            if session?.currentModeId == "plan" && !(isProcessing && session?.currentThought != nil) {
+            if currentModeId == "plan" && !isProcessing {
                 RoundedRectangle(cornerRadius: inputCornerRadius, style: .continuous)
                     .stroke(
                         AngularGradient(
-                            colors: [.blue, .purple, .blue],
+                            colors: gradientColors,
                             center: .center,
                             angle: .degrees(gradientRotation)
                         ),
@@ -181,17 +186,17 @@ struct ChatInputBar: View {
             }
         }
         .onChange(of: isProcessing) { newValue in
-            if newValue && session?.currentThought != nil {
+            if newValue {
                 startGradientAnimation()
             }
         }
-        .onChange(of: session?.currentModeId) { newMode in
+        .onChange(of: currentModeId) { newMode in
             if newMode == "plan" {
                 startGradientAnimation()
             }
         }
         .onAppear {
-            if session?.currentModeId == "plan" {
+            if currentModeId == "plan" {
                 startGradientAnimation()
             }
         }

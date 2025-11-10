@@ -49,6 +49,7 @@ struct ModeSelectorView: View {
         }
         .menuStyle(.borderlessButton)
         .buttonStyle(.plain)
+        .id(session.currentModeId)  // Force view update on mode change
     }
 
     private func modeIcon(for mode: SessionMode) -> some View {

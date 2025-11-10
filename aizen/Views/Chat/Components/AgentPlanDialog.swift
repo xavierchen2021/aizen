@@ -1,34 +1,36 @@
 //
-//  AgentPlanSidebarView.swift
+//  AgentPlanDialog.swift
 //  aizen
 //
-//  Sidebar displaying agent plan progress
+//  Dialog displaying agent plan progress
 //
 
 import SwiftUI
 
-struct AgentPlanSidebarView: View {
+struct AgentPlanDialog: View {
     let plan: Plan
-    @Binding var isShowing: Bool
+    @Binding var isPresented: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(spacing: 0) {
             HStack {
-                Text("chat.plan.sidebar.title", bundle: .main)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.primary)
+                Text("Agent Plan")
+                    .font(.title2)
+                    .fontWeight(.semibold)
 
                 Spacer()
 
-                Button { isShowing = false } label: {
+                Button {
+                    isPresented = false
+                } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 16))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
             .background(.ultraThinMaterial)
 
             Divider()
@@ -44,25 +46,25 @@ struct AgentPlanSidebarView: View {
 
                             VStack(alignment: .leading, spacing: 4) {
                                 PlanContentView(content: entry.content)
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(.system(size: 14, weight: .medium))
                                     .foregroundStyle(.primary)
 
                                 if let activeForm = entry.activeForm, entry.status == .inProgress {
                                     PlanContentView(content: activeForm)
-                                        .font(.system(size: 11))
+                                        .font(.system(size: 12))
                                         .foregroundStyle(.secondary)
                                         .italic()
                                 }
 
                                 Text(statusLabel(for: entry.status))
-                                    .font(.system(size: 10, weight: .medium))
+                                    .font(.system(size: 11, weight: .medium))
                                     .foregroundStyle(statusColor(for: entry.status))
                                     .textCase(.uppercase)
                             }
 
                             Spacer()
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, 20)
                         .padding(.vertical, 8)
                         .background(
                             RoundedRectangle(cornerRadius: 8)
@@ -71,20 +73,15 @@ struct AgentPlanSidebarView: View {
 
                         if index < plan.entries.count - 1 {
                             Divider()
-                                .padding(.horizontal, 16)
+                                .padding(.horizontal, 20)
                         }
                     }
                 }
                 .padding(.vertical, 12)
             }
         }
-        .frame(width: 280)
+        .frame(width: 700, height: 500)
         .background(.ultraThinMaterial)
-        .overlay(alignment: .leading) {
-            Rectangle()
-                .fill(.separator)
-                .frame(width: 1)
-        }
     }
 
     private func statusColor(for status: PlanEntryStatus) -> Color {

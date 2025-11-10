@@ -202,7 +202,7 @@ class AgentSession: ObservableObject, ACPClientDelegate {
 
         // Clean up delegates
         await terminalDelegate.cleanup()
-        await permissionHandler.cancelPendingRequest()
+        permissionHandler.cancelPendingRequest()
 
         acpClient = nil
         cancellables.removeAll()

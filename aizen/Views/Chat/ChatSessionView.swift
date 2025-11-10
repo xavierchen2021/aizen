@@ -20,12 +20,12 @@ struct ChatSessionView: View {
     // UI-only state
     @State private var showingAttachmentPicker = false
     @State private var showingAuthSheet = false
-    @State private var showingAgentPlan = false
     @State private var showingCommandAutocomplete = false
     @State private var showingVoiceRecording = false
     @State private var showingPermissionError = false
     @State private var permissionErrorMessage = ""
     @State private var showingAgentSetupDialog = false
+    @State private var showingAgentPlan = false
 
     init(worktree: Worktree, session: ChatSession, sessionManager: ChatSessionManager, viewContext: NSManagedObjectContext) {
         self.worktree = worktree
@@ -64,9 +64,11 @@ struct ChatSessionView: View {
                     Spacer(minLength: 0)
 
                     VStack(spacing: 8) {
+                        // Permission Requests (excluding plan requests - those show as sheet)
                         if let agentSession = viewModel.currentAgentSession,
                            viewModel.showingPermissionAlert,
-                           let request = viewModel.currentPermissionRequest {
+                           let request = viewModel.currentPermissionRequest,
+                           !isPlanRequest(request) {
                             HStack {
                                 PermissionRequestView(session: agentSession, request: request)
                                     .transition(.opacity)
@@ -83,6 +85,7 @@ struct ChatSessionView: View {
                         ChatControlsBar(
                             selectedAgent: viewModel.selectedAgent,
                             currentAgentSession: viewModel.currentAgentSession,
+                            hasModes: viewModel.hasModes,
                             onAgentSelect: viewModel.requestAgentSwitch
                         )
                         .padding(.horizontal, 20)
@@ -98,6 +101,7 @@ struct ChatSessionView: View {
                             permissionErrorMessage: $permissionErrorMessage,
                             commandSuggestions: viewModel.commandSuggestions,
                             session: viewModel.currentAgentSession,
+                            currentModeId: viewModel.currentModeId,
                             selectedAgent: viewModel.selectedAgent,
                             isSessionReady: viewModel.isSessionReady,
                             audioService: viewModel.audioService,
@@ -110,15 +114,13 @@ struct ChatSessionView: View {
                     .padding(.vertical, 16)
                 }
 
-                if showingAgentPlan, let plan = viewModel.currentAgentSession?.agentPlan {
-                    AgentPlanSidebarView(plan: plan, isShowing: $showingAgentPlan)
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
-                }
+
             }
         }
         .focusedSceneValue(\.chatActions, ChatActions(cycleModeForward: viewModel.cycleModeForward))
         .onAppear {
             viewModel.setupAgentSession()
+            NotificationCenter.default.post(name: .chatViewDidAppear, object: nil)
         }
         .onChange(of: viewModel.selectedAgent) { _ in
             viewModel.setupAgentSession()
@@ -127,20 +129,40 @@ struct ChatSessionView: View {
             viewModel.updateCommandSuggestions(newText)
             updateCommandAutocompleteVisibility()
         }
-        .onReceive(viewModel.$currentAgentSession) { session in
-            if let session = session {
-                if session.needsAuthentication {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        showingAuthSheet = true
-                    }
-                }
-                if session.needsAgentSetup {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        showingAgentSetupDialog = true
-                    }
-                }
+        .onReceive(NotificationCenter.default.publisher(for: .cycleModeShortcut)) { _ in
+            viewModel.cycleModeForward()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .interruptAgentShortcut)) { _ in
+            viewModel.cancelCurrentPrompt()
+        }
+        .onDisappear {
+            NotificationCenter.default.post(name: .chatViewDidDisappear, object: nil)
+        }
+        // Direct observers for derived/nested state (fixes Issue 2: triggers on async changes)
+        .onReceive(viewModel.$needsAuth) { needsAuth in
+            if needsAuth {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    showingAgentPlan = session.agentPlan != nil
+                    showingAuthSheet = true
+                }
+            }
+        }
+        .onReceive(viewModel.$needsSetup) { needsSetup in
+            if needsSetup {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    showingAgentSetupDialog = true
+                }
+            }
+        }
+        .onReceive(viewModel.$hasAgentPlan) { hasPlan in
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                showingAgentPlan = hasPlan
+            }
+        }
+        .onReceive(viewModel.$showingPermissionAlert) { showing in
+            // Check if this is a plan request - if so, show as sheet instead of inline
+            if showing, let request = viewModel.currentPermissionRequest, isPlanRequest(request) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    showingAgentPlan = true
                 }
             }
         }
@@ -152,6 +174,23 @@ struct ChatSessionView: View {
         .sheet(isPresented: $showingAgentSetupDialog) {
             if let agentSession = viewModel.currentAgentSession {
                 AgentSetupDialog(session: agentSession)
+            }
+        }
+        .sheet(isPresented: $showingAgentPlan) {
+            // Check if this is a plan approval request or plan progress view
+            if let request = viewModel.currentPermissionRequest,
+               isPlanRequest(request),
+               let agentSession = viewModel.currentAgentSession {
+                // Plan approval - show approval dialog
+                PlanApprovalDialog(
+                    session: agentSession,
+                    request: request,
+                    isPresented: $showingAgentPlan
+                )
+            } else if let plan = viewModel.currentAgentPlan {
+                // Plan progress - show progress dialog
+                AgentPlanDialog(plan: plan, isPresented: $showingAgentPlan)
+                    .frame(minWidth: 500, minHeight: 400)
             }
         }
         .alert(String(localized: "chat.agent.switch.title"), isPresented: $viewModel.showingAgentSwitchWarning) {
@@ -176,6 +215,17 @@ struct ChatSessionView: View {
         } message: {
             Text(permissionErrorMessage)
         }
+    }
+
+    // MARK: - Helpers
+
+    private func isPlanRequest(_ request: RequestPermissionRequest) -> Bool {
+        guard let toolCall = request.toolCall,
+              let rawInput = toolCall.rawInput?.value as? [String: Any],
+              let _ = rawInput["plan"] as? String else {
+            return false
+        }
+        return true
     }
 
     // MARK: - Subviews

@@ -11,6 +11,7 @@ import Combine
 import Markdown
 import os.log
 
+// MARK: - Main ViewModel
 @MainActor
 class ChatSessionViewModel: ObservableObject {
     // MARK: - Dependencies
@@ -19,6 +20,12 @@ class ChatSessionViewModel: ObservableObject {
     let session: ChatSession
     let sessionManager: ChatSessionManager
     let viewContext: NSManagedObjectContext
+
+    // MARK: - Handlers
+
+    private let messageHandler: MessageHandler
+    private let agentSwitcher: AgentSwitcher
+    private let commandHandler = CommandAutocompleteHandler()
 
     // MARK: - Services
 
@@ -43,6 +50,14 @@ class ChatSessionViewModel: ObservableObject {
     @Published var showingAgentSwitchWarning = false
     @Published var pendingAgentSwitch: String?
 
+    // MARK: - Derived State (bridges nested AgentSession properties for reliable observation)
+    @Published var needsAuth: Bool = false
+    @Published var needsSetup: Bool = false
+    @Published var hasAgentPlan: Bool = false
+    @Published var currentAgentPlan: Plan?
+    @Published var hasModes: Bool = false
+    @Published var currentModeId: String?
+
     // MARK: - Internal State
 
     var scrollProxy: ScrollViewProxy?
@@ -56,7 +71,7 @@ class ChatSessionViewModel: ObservableObject {
     }
 
     var isSessionReady: Bool {
-        currentAgentSession?.isActive == true && currentAgentSession?.needsAuthentication == false
+        currentAgentSession?.isActive == true && !needsAuth
     }
 
     // MARK: - Initialization
@@ -71,6 +86,9 @@ class ChatSessionViewModel: ObservableObject {
         self.session = session
         self.sessionManager = sessionManager
         self.viewContext = viewContext
+
+        self.messageHandler = MessageHandler(viewContext: viewContext, session: session)
+        self.agentSwitcher = AgentSwitcher(viewContext: viewContext, session: session)
     }
 
     // MARK: - Lifecycle
@@ -80,6 +98,7 @@ class ChatSessionViewModel: ObservableObject {
 
         if let existingSession = sessionManager.getAgentSession(for: sessionId) {
             currentAgentSession = existingSession
+            updateDerivedState(from: existingSession)
             setupSessionObservers(session: existingSession)
 
             if !existingSession.isActive {
@@ -95,6 +114,7 @@ class ChatSessionViewModel: ObservableObject {
             if let newSession = agentRouter.getSession(for: selectedAgent) {
                 sessionManager.setAgentSession(newSession, for: sessionId)
                 currentAgentSession = newSession
+                updateDerivedState(from: newSession)
 
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                     messages = newSession.messages
@@ -109,6 +129,18 @@ class ChatSessionViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    // MARK: - Derived State Updates
+    private func updateDerivedState(from session: AgentSession) {
+        needsAuth = session.needsAuthentication
+        needsSetup = session.needsAgentSetup
+        hasAgentPlan = session.agentPlan != nil
+        currentAgentPlan = session.agentPlan
+        hasModes = !session.availableModes.isEmpty
+        currentModeId = session.currentModeId
+        showingPermissionAlert = session.permissionHandler.showingPermissionAlert
+        currentPermissionRequest = session.permissionHandler.permissionRequest
     }
 
     func loadMessages() {
@@ -173,7 +205,7 @@ class ChatSessionViewModel: ObservableObject {
 
                 try await agentSession.sendMessage(content: messageText, attachments: messageAttachments)
 
-                self.saveMessage(content: messageText, role: "user", agentName: self.selectedAgent)
+                self.messageHandler.saveMessage(content: messageText, role: "user", agentName: self.selectedAgent)
                 self.scrollToBottom()
             } catch {
                 let errorMessage = MessageItem(
@@ -227,20 +259,8 @@ class ChatSessionViewModel: ObservableObject {
     }
 
     func performAgentSwitch(to newAgent: String) {
-        session.agentName = newAgent
-        let displayName = AgentRegistry.shared.getMetadata(for: newAgent)?.name ?? newAgent.capitalized
-        session.title = displayName
-
-        session.objectWillChange.send()
-        worktree.objectWillChange.send()
-
-        // Trigger update for computed property selectedAgent
-        objectWillChange.send()
-
-        do {
-            try viewContext.save()
-        } catch {
-            logger.error("Failed to save agent switch: \(error.localizedDescription)")
+        agentSwitcher.performAgentSwitch(to: newAgent, worktree: worktree) {
+            self.objectWillChange.send()
         }
 
         if let sessionId = session.id {
@@ -256,27 +276,7 @@ class ChatSessionViewModel: ObservableObject {
     // MARK: - Command Autocomplete
 
     func updateCommandSuggestions(_ text: String) {
-        let trimmed = text.trimmingCharacters(in: .whitespaces)
-
-        if trimmed.hasPrefix("/") {
-            let commandPart = String(trimmed.dropFirst()).lowercased()
-
-            guard let agentSession = currentAgentSession else {
-                return
-            }
-
-            if commandPart.isEmpty {
-                commandSuggestions = agentSession.availableCommands
-            } else {
-                let filtered = agentSession.availableCommands.filter { command in
-                    command.name.lowercased().hasPrefix(commandPart) ||
-                    command.description.lowercased().contains(commandPart)
-                }
-                commandSuggestions = filtered
-            }
-        } else {
-            commandSuggestions = []
-        }
+        commandSuggestions = commandHandler.updateCommandSuggestions(text, currentAgentSession: currentAgentSession)
     }
 
     func selectCommand(_ command: AvailableCommand) {
@@ -381,38 +381,50 @@ class ChatSessionViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // Direct observers for nested/derived state (fixes Issue 2)
         session.$needsAuthentication
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                // Trigger view update - the View will check this property
-                self?.objectWillChange.send()
+            .sink { [weak self] needsAuth in
+                self?.needsAuth = needsAuth
             }
             .store(in: &cancellables)
 
         session.$needsAgentSetup
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                // Trigger view update - the View will check this property
-                self?.objectWillChange.send()
+            .sink { [weak self] needsSetup in
+                self?.needsSetup = needsSetup
             }
             .store(in: &cancellables)
 
         session.$agentPlan
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                // Trigger view update - the View will check this property
-                self?.objectWillChange.send()
+            .sink { [weak self] plan in
+                self?.logger.debug("Agent plan status changed: \(plan != nil)")
+                self?.hasAgentPlan = plan != nil
+                self?.currentAgentPlan = plan
             }
             .store(in: &cancellables)
 
+        session.$availableModes
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] modes in
+                self?.hasModes = !modes.isEmpty
+            }
+            .store(in: &cancellables)
+
+        session.$currentModeId
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] modeId in
+                self?.currentModeId = modeId
+            }
+            .store(in: &cancellables)
+
+        // Permission handler observers (enhanced for nested changes)
         session.permissionHandler.$showingPermissionAlert
             .receive(on: DispatchQueue.main)
             .sink { [weak self] showing in
                 guard let self = self else { return }
-                self.objectWillChange.send()
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    self.showingPermissionAlert = showing
-                }
+                self.showingPermissionAlert = showing
             }
             .store(in: &cancellables)
 
@@ -420,31 +432,12 @@ class ChatSessionViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] request in
                 guard let self = self else { return }
-                self.objectWillChange.send()
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    self.currentPermissionRequest = request
-                }
+                self.currentPermissionRequest = request
             }
             .store(in: &cancellables)
     }
 
-    private func saveMessage(content: String, role: String, agentName: String) {
-        let message = ChatMessage(context: viewContext)
-        message.id = UUID()
-        message.timestamp = Date()
-        message.role = role
-        message.agentName = agentName
-        message.contentJSON = content
-        message.session = session
 
-        session.lastMessageAt = Date()
-
-        do {
-            try viewContext.save()
-        } catch {
-            logger.error("Failed to save message: \(error.localizedDescription)")
-        }
-    }
 
     private func messageRoleFromString(_ role: String) -> MessageRole {
         switch role.lowercased() {

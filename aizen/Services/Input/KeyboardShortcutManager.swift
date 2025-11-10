@@ -1,0 +1,88 @@
+//
+//  KeyboardShortcutManager.swift
+//  aizen
+//
+//  Manages global keyboard shortcuts and event monitoring
+//
+
+import AppKit
+import Foundation
+
+// MARK: - Key Codes
+
+enum KeyCode {
+    static let tab: UInt16 = 48
+    static let escape: UInt16 = 53
+}
+
+// MARK: - Keyboard Shortcut Manager
+
+@MainActor
+class KeyboardShortcutManager {
+    private var isChatViewActive = false
+    private var observers: [NSObjectProtocol] = []
+    private var eventMonitor: Any?
+
+    init() {
+        setupNotifications()
+        setupEventMonitor()
+    }
+
+    deinit {
+        observers.forEach { NotificationCenter.default.removeObserver($0) }
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+    }
+
+    private func setupNotifications() {
+        let appearObserver = NotificationCenter.default.addObserver(
+            forName: .chatViewDidAppear,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.isChatViewActive = true
+        }
+
+        let disappearObserver = NotificationCenter.default.addObserver(
+            forName: .chatViewDidDisappear,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.isChatViewActive = false
+        }
+
+        observers.append(appearObserver)
+        observers.append(disappearObserver)
+    }
+
+    private func setupEventMonitor() {
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self, self.isChatViewActive else {
+                return event
+            }
+
+            if event.keyCode == KeyCode.tab && event.modifierFlags.contains(.shift) {
+                // Shift+Tab: Cycle modes
+                NotificationCenter.default.post(name: .cycleModeShortcut, object: nil)
+                return nil
+            } else if event.keyCode == KeyCode.escape {
+                // Escape: Interrupt agent
+                NotificationCenter.default.post(name: .interruptAgentShortcut, object: nil)
+                return nil
+            }
+
+            return event
+        }
+    }
+
+    func cleanup() {
+        observers.forEach { NotificationCenter.default.removeObserver($0) }
+        observers.removeAll()
+
+        if let monitor = eventMonitor {
+            NSEvent.removeMonitor(monitor)
+            eventMonitor = nil
+        }
+    }
+}

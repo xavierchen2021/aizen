@@ -18,6 +18,7 @@ struct aizenApp: App {
 
     // Sparkle updater controller
     private let updaterController: SPUStandardUpdaterController
+    private let shortcutManager = KeyboardShortcutManager()
 
     // Terminal settings observers
     @AppStorage("terminalFontName") private var terminalFontName = "Menlo"
@@ -35,6 +36,9 @@ struct aizenApp: App {
             updaterDelegate: nil,
             userDriverDelegate: nil
         )
+
+        // Shortcut manager handles global shortcuts
+        _ = shortcutManager
     }
 
     var body: some Scene {
@@ -87,7 +91,6 @@ struct aizenApp: App {
                 Button("Cycle Mode") {
                     chatActions?.cycleModeForward()
                 }
-                .keyboardShortcut(.tab, modifiers: .shift)
             }
         }
 

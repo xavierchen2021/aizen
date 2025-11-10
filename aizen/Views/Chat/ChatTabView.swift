@@ -18,9 +18,16 @@ struct ChatTabView: View {
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.aizen", category: "ChatTabView")
     @State private var enabledAgents: [AgentMetadata] = []
 
-    var sessions: [ChatSession] {
-        let sessions = (worktree.chatSessions as? Set<ChatSession>) ?? []
-        return sessions.sorted { ($0.createdAt ?? Date()) < ($1.createdAt ?? Date()) }
+    @FetchRequest private var sessions: FetchedResults<ChatSession>
+
+    init(worktree: Worktree, selectedSessionId: Binding<UUID?>) {
+        self.worktree = worktree
+        self._selectedSessionId = selectedSessionId
+        self._sessions = FetchRequest(
+            sortDescriptors: [NSSortDescriptor(keyPath: \ChatSession.createdAt, ascending: true)],
+            predicate: NSPredicate(format: "worktree.id == %@", worktree.id! as CVarArg),
+            animation: .default
+        )
     }
 
     var body: some View {
@@ -117,7 +124,7 @@ struct ChatTabView: View {
 
     private func loadEnabledAgents() {
         Task {
-            enabledAgents = await AgentRegistry.shared.getEnabledAgents()
+            enabledAgents = AgentRegistry.shared.getEnabledAgents()
         }
     }
 
@@ -130,18 +137,17 @@ struct ChatTabView: View {
         session.createdAt = Date()
         session.worktree = worktree
 
-        Task {
-            // Use agent display name instead of ID
-            let displayName = AgentRegistry.shared.getMetadata(for: agent)?.name ?? agent.capitalized
-            await MainActor.run {
-                session.title = displayName
-                do {
-                    try context.save()
-                    selectedSessionId = session.id
-                } catch {
-                    logger.error("Failed to create chat session: \(error.localizedDescription)")
-                }
-            }
+        // Use agent display name instead of ID
+        let displayName = AgentRegistry.shared.getMetadata(for: agent)?.name ?? agent.capitalized
+        session.title = displayName
+
+        do {
+            try context.save()
+            // Update binding immediately (synchronous post-save)
+            selectedSessionId = session.id
+            logger.info("Created new chat session: \(session.id?.uuidString ?? "unknown")")
+        } catch {
+            logger.error("Failed to create chat session: \(error.localizedDescription)")
         }
     }
 }
