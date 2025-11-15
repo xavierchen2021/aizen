@@ -41,19 +41,32 @@ echo "Generating appcast for version $MARKETING_VERSION (build $BUILD_VERSION)..
 # Get DMG file size
 DMG_SIZE=$(stat -f%z "$DMG_PATH")
 
-# Sign the DMG with EdDSA key
-echo "Signing DMG..."
-SIGNATURE=$(sign_update "$DMG_PATH" "$PRIVATE_KEY" 2>/dev/null || echo "")
+# Get signature for the DMG
+if [ -n "$SPARKLE_SIGNATURE" ]; then
+    echo "Using pre-generated signature from environment..."
+    SIGNATURE="$SPARKLE_SIGNATURE"
+else
+    echo "Generating EdDSA signature for DMG..."
 
-if [ -z "$SIGNATURE" ]; then
-    echo "Error: Failed to sign DMG"
-    echo "Trying alternative signing method..."
-
-    # Alternative: use openssl directly if sign_update fails
-    if command -v openssl &> /dev/null; then
-        SIGNATURE=$(openssl dgst -sha256 -sign "$PRIVATE_KEY" "$DMG_PATH" | base64)
+    # Find sign_update binary
+    SIGN_UPDATE=""
+    if command -v sign_update &> /dev/null; then
+        SIGN_UPDATE="sign_update"
     else
-        echo "Error: Could not sign the update"
+        # Try to find in Homebrew Sparkle installation
+        SIGN_UPDATE=$(find /opt/homebrew/Caskroom/sparkle -name sign_update -type f 2>/dev/null | grep -v old_dsa | grep -v dSYM | head -1)
+    fi
+
+    if [ -z "$SIGN_UPDATE" ]; then
+        echo "Error: sign_update tool not found"
+        echo "Please install Sparkle: brew install sparkle"
+        exit 1
+    fi
+
+    SIGNATURE=$("$SIGN_UPDATE" "$DMG_PATH" "$PRIVATE_KEY" 2>/dev/null || echo "")
+
+    if [ -z "$SIGNATURE" ]; then
+        echo "Error: Failed to generate EdDSA signature for DMG"
         exit 1
     fi
 fi
