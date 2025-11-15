@@ -96,7 +96,9 @@ class GitIndexWatcher {
 
         // Get initial modification date and checksum
         lastIndexModificationDate = try? FileManager.default.attributesOfItem(atPath: gitIndexPath)[.modificationDate] as? Date
-        lastWorkdirChecksum = computeWorkdirChecksum()
+        Task {
+            self.lastWorkdirChecksum = await self.computeWorkdirChecksum()
+        }
 
         // Start polling task on BACKGROUND thread
         pollingTask = Task.detached { [weak self] in
@@ -104,7 +106,7 @@ class GitIndexWatcher {
 
             while !Task.isCancelled {
                 do {
-                    try await Task.sleep(for: .seconds(1))
+                    try await Task.sleep(for: .seconds(pollInterval))
 
                     guard !Task.isCancelled else { break }
 
@@ -123,7 +125,7 @@ class GitIndexWatcher {
                     }
 
                     // Check if working directory changed
-                    let currentChecksum = self.computeWorkdirChecksum()
+                    let currentChecksum = await self.computeWorkdirChecksum()
                     if currentChecksum != self.lastWorkdirChecksum {
                         self.lastWorkdirChecksum = currentChecksum
                         hasChanges = true
@@ -147,25 +149,30 @@ class GitIndexWatcher {
         lastWorkdirChecksum = nil
     }
 
-    private func computeWorkdirChecksum() -> String {
+    private func computeWorkdirChecksum() async -> String {
         // Get git status output hash to detect working directory changes
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = ["status", "--porcelain"]
-        process.currentDirectoryURL = URL(fileURLWithPath: worktreePath)
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .background).async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+                process.arguments = ["status", "--porcelain"]
+                process.currentDirectoryURL = URL(fileURLWithPath: self.worktreePath)
 
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
+                let pipe = Pipe()
+                process.standardOutput = pipe
+                process.standardError = Pipe()
 
-        do {
-            try process.run()
-            process.waitUntilExit()
+                do {
+                    try process.run()
+                    process.waitUntilExit()
 
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            return String(data: data, encoding: .utf8) ?? ""
-        } catch {
-            return ""
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    let result = String(data: data, encoding: .utf8) ?? ""
+                    continuation.resume(returning: result)
+                } catch {
+                    continuation.resume(returning: "")
+                }
+            }
         }
     }
 }
