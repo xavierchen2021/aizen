@@ -178,11 +178,41 @@ jobs:
           # Save private key from secrets
           echo "${{ secrets.SPARKLE_PRIVATE_KEY }}" > sparkle_priv.pem
 
+          # Verify key was saved
+          if [ ! -s sparkle_priv.pem ]; then
+            echo "Error: Private key is empty or not saved"
+            exit 1
+          fi
+
+          # Verify DMG exists
+          if [ ! -f "build/Aizen-${{ github.event.inputs.marketing_version }}.dmg" ]; then
+            echo "Error: DMG not found at build/Aizen-${{ github.event.inputs.marketing_version }}.dmg"
+            ls -la build/
+            exit 1
+          fi
+
           # Find sign_update binary (version-independent)
-          SIGN_UPDATE=$(find /opt/homebrew/Caskroom/sparkle -name sign_update -type f | grep -v old_dsa | grep -v dSYM | head -1)
+          SIGN_UPDATE=$(find /opt/homebrew/Caskroom/sparkle -name sign_update -type f 2>/dev/null | grep -v old_dsa | grep -v dSYM | head -1)
+
+          if [ -z "$SIGN_UPDATE" ]; then
+            echo "Error: sign_update binary not found"
+            echo "Searching in Sparkle installation..."
+            find /opt/homebrew/Caskroom/sparkle -type f -name sign_update 2>/dev/null || true
+            exit 1
+          fi
+
+          echo "Using sign_update: $SIGN_UPDATE"
+          echo "DMG path: build/Aizen-${{ github.event.inputs.marketing_version }}.dmg"
 
           # Sign the DMG (EdDSA signature)
-          SIGNATURE=$("$SIGN_UPDATE" "build/Aizen-${{ github.event.inputs.marketing_version }}.dmg" sparkle_priv.pem)
+          SIGNATURE=$("$SIGN_UPDATE" "build/Aizen-${{ github.event.inputs.marketing_version }}.dmg" sparkle_priv.pem 2>&1)
+
+          if [ -z "$SIGNATURE" ]; then
+            echo "Error: sign_update returned empty signature"
+            exit 1
+          fi
+
+          echo "Generated signature: $SIGNATURE"
           echo "SPARKLE_SIGNATURE=$SIGNATURE" >> $GITHUB_ENV
 
       - name: Generate appcast
