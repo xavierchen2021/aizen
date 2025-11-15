@@ -37,6 +37,10 @@ struct aizenApp: App {
             userDriverDelegate: nil
         )
 
+        // Enable automatic update checks
+        updaterController.updater.automaticallyChecksForUpdates = true
+        updaterController.updater.updateCheckInterval = 3600 // Check every hour
+
         // Shortcut manager handles global shortcuts
         _ = shortcutManager
     }

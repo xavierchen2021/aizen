@@ -3,8 +3,12 @@ name: Release Build
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Release version (e.g., 1.0.1)'
+      marketing_version:
+        description: 'Marketing version (e.g., 1.0.6)'
+        required: true
+        type: string
+      build_version:
+        description: 'Build version (e.g., 10006)'
         required: true
         type: string
       release_notes:
@@ -38,7 +42,7 @@ jobs:
       - name: Bump version
         run: |
           chmod +x scripts/bump-version.sh
-          scripts/bump-version.sh "${{ github.event.inputs.version }}"
+          scripts/bump-version.sh "${{ github.event.inputs.marketing_version }}" "${{ github.event.inputs.build_version }}"
 
       - name: Install dependencies
         run: |
@@ -119,11 +123,11 @@ jobs:
             --icon "aizen.app" 200 190 \
             --hide-extension "aizen.app" \
             --app-drop-link 600 185 \
-            "build/Aizen-${{ github.event.inputs.version }}.dmg" \
+            "build/Aizen-${{ github.event.inputs.marketing_version }}.dmg" \
             "build/dmg/" || true
 
           # create-dmg sometimes fails with exit code 2 even on success
-          if [ ! -f "build/Aizen-${{ github.event.inputs.version }}.dmg" ]; then
+          if [ ! -f "build/Aizen-${{ github.event.inputs.marketing_version }}.dmg" ]; then
             echo "Error: DMG creation failed"
             exit 1
           fi
@@ -139,7 +143,7 @@ jobs:
 
           echo "Signing DMG..."
           codesign --force --sign "$CERT_IDENTITY" \
-            "build/Aizen-${{ github.event.inputs.version }}.dmg"
+            "build/Aizen-${{ github.event.inputs.marketing_version }}.dmg"
 
       # Conditional notarization
       - name: Notarize DMG
@@ -151,7 +155,7 @@ jobs:
         run: |
           echo "Notarizing DMG..."
           xcrun notarytool submit \
-            "build/Aizen-${{ github.event.inputs.version }}.dmg" \
+            "build/Aizen-${{ github.event.inputs.marketing_version }}.dmg" \
             --apple-id "${{ secrets.APPLE_ID }}" \
             --team-id "${{ secrets.APPLE_TEAM_ID }}" \
             --password "${{ secrets.APPLE_APP_PASSWORD }}" \
@@ -167,7 +171,7 @@ jobs:
         if: ${{ env.APPLE_CERTIFICATE != '' && env.APPLE_ID != '' && env.APPLE_APP_PASSWORD != '' }}
         run: |
           echo "Stapling notarization to DMG..."
-          xcrun stapler staple "build/Aizen-${{ github.event.inputs.version }}.dmg"
+          xcrun stapler staple "build/Aizen-${{ github.event.inputs.marketing_version }}.dmg"
 
       - name: Generate Sparkle signature
         run: |
@@ -178,34 +182,22 @@ jobs:
           SIGN_UPDATE=$(find /opt/homebrew/Caskroom/sparkle -name sign_update -type f | grep -v old_dsa | grep -v dSYM | head -1)
 
           # Sign the DMG (using -f flag to avoid keychain prompt, -p for signature-only output)
-          SIGNATURE=$("$SIGN_UPDATE" -f sparkle_priv.pem -p "build/Aizen-${{ github.event.inputs.version }}.dmg")
+          SIGNATURE=$("$SIGN_UPDATE" -f sparkle_priv.pem -p "build/Aizen-${{ github.event.inputs.marketing_version }}.dmg")
           echo "SPARKLE_SIGNATURE=$SIGNATURE" >> $GITHUB_ENV
 
           # Clean up private key
           rm sparkle_priv.pem
 
-      - name: Generate appcast entry
+      - name: Generate appcast
+        env:
+          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
         run: |
-          DMG_SIZE=$(stat -f%z "build/Aizen-${{ github.event.inputs.version }}.dmg")
-          DOWNLOAD_URL="${{ secrets.R2_PUBLIC_URL }}/Aizen-${{ github.event.inputs.version }}.dmg"
-
-          # Create appcast entry
-          cat > build/appcast-entry.xml << EOF
-          <item>
-              <title>Version ${{ github.event.inputs.version }}</title>
-              <description><![CDATA[${{ github.event.inputs.release_notes }}]]></description>
-              <pubDate>$(date -R)</pubDate>
-              <sparkle:version>${{ github.event.inputs.version }}</sparkle:version>
-              <sparkle:shortVersionString>${{ github.event.inputs.version }}</sparkle:shortVersionString>
-              <enclosure url="$DOWNLOAD_URL"
-                         length="$DMG_SIZE"
-                         type="application/octet-stream"
-                         sparkle:edSignature="${{ env.SPARKLE_SIGNATURE }}" />
-              <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
-          </item>
-          EOF
-
-          cat build/appcast-entry.xml
+          chmod +x scripts/generate-appcast.sh
+          scripts/generate-appcast.sh \
+            "build/Aizen-${{ github.event.inputs.marketing_version }}.dmg" \
+            "${{ github.event.inputs.build_version }}" \
+            "${{ github.event.inputs.marketing_version }}" \
+            "${{ github.event.inputs.release_notes }}"
 
       - name: Upload to Cloudflare R2
         env:
@@ -215,22 +207,14 @@ jobs:
           R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
         run: |
           # Upload DMG
-          aws s3 cp "build/Aizen-${{ github.event.inputs.version }}.dmg" \
-            "s3://${{ secrets.R2_BUCKET_NAME }}/Aizen-${{ github.event.inputs.version }}.dmg" \
+          aws s3 cp "build/Aizen-${{ github.event.inputs.marketing_version }}.dmg" \
+            "s3://${{ secrets.R2_BUCKET_NAME }}/Aizen-${{ github.event.inputs.marketing_version }}.dmg" \
             --endpoint-url "${{ secrets.R2_ENDPOINT }}" \
             --region auto
 
           echo "✅ DMG uploaded to R2"
 
-          # Download existing appcast if it exists
-          aws s3 cp "s3://${{ secrets.R2_BUCKET_NAME }}/appcast.xml" appcast.xml \
-            --endpoint-url "${{ secrets.R2_ENDPOINT }}" \
-            --region auto || echo '<?xml version="1.0" encoding="utf-8"?><rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"><channel><title>Aizen Updates</title><description>Updates for Aizen</description><language>en</language></channel></rss>' > appcast.xml
-
-          # Add new entry to appcast
-          perl -i -pe 's|</channel>|'"$(cat build/appcast-entry.xml)"'\n    </channel>|' appcast.xml
-
-          # Upload updated appcast
+          # Upload appcast (generated by generate-appcast.sh)
           aws s3 cp appcast.xml "s3://${{ secrets.R2_BUCKET_NAME }}/appcast.xml" \
             --endpoint-url "${{ secrets.R2_ENDPOINT }}" \
             --region auto \
@@ -241,8 +225,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ github.event.inputs.version }}
-          name: Release ${{ github.event.inputs.version }}
+          tag_name: v${{ github.event.inputs.marketing_version }}
+          name: Release ${{ github.event.inputs.marketing_version }}
           body: ${{ github.event.inputs.release_notes }}
           draft: false
           prerelease: false
@@ -261,8 +245,9 @@ jobs:
         run: |
           echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Version:** ${{ github.event.inputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **DMG URL:** ${{ secrets.R2_PUBLIC_URL }}/Aizen-${{ github.event.inputs.version }}.dmg" >> $GITHUB_STEP_SUMMARY
+          echo "- **Marketing Version:** ${{ github.event.inputs.marketing_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Version:** ${{ github.event.inputs.build_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **DMG URL:** ${{ secrets.R2_PUBLIC_URL }}/Aizen-${{ github.event.inputs.marketing_version }}.dmg" >> $GITHUB_STEP_SUMMARY
           echo "- **Appcast URL:** ${{ secrets.R2_PUBLIC_URL }}/appcast.xml" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ -n "${{ secrets.APPLE_CERTIFICATE }}" ]; then

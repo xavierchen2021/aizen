@@ -3,18 +3,19 @@ set -e
 
 # Script to generate appcast.xml for Sparkle updates
 # This script should be run after building and signing a new release
-# Usage: ./generate-appcast.sh <dmg-path> <version> <release-notes>
+# Usage: ./generate-appcast.sh <dmg-path> <build-version> <marketing-version> <release-notes>
 
-if [ -z "$1" ] || [ -z "$2" ]; then
+if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]; then
     echo "Error: Missing required arguments"
-    echo "Usage: $0 <dmg-path> <version> [release-notes]"
-    echo "Example: $0 build/Aizen-1.0.1.dmg 1.0.1 'Bug fixes and improvements'"
+    echo "Usage: $0 <dmg-path> <build-version> <marketing-version> [release-notes]"
+    echo "Example: $0 build/Aizen-1.0.1.dmg 10001 1.0.1 'Bug fixes and improvements'"
     exit 1
 fi
 
 DMG_PATH="$1"
-VERSION="$2"
-RELEASE_NOTES="${3:-New release}"
+BUILD_VERSION="$2"
+MARKETING_VERSION="$3"
+RELEASE_NOTES="${4:-New release}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 APPCAST_FILE="$PROJECT_ROOT/appcast.xml"
@@ -45,7 +46,7 @@ if [ ! -f "$PRIVATE_KEY" ]; then
     exit 1
 fi
 
-echo "Generating appcast for version $VERSION..."
+echo "Generating appcast for version $MARKETING_VERSION (build $BUILD_VERSION)..."
 
 # Get DMG file size
 DMG_SIZE=$(stat -f%z "$DMG_PATH")
@@ -69,7 +70,11 @@ fi
 
 # Determine R2 or download URL
 # In CI, this will be set by the workflow
-DOWNLOAD_URL="${R2_PUBLIC_URL}/Aizen-${VERSION}.dmg"
+if [ -z "$R2_PUBLIC_URL" ]; then
+    echo "Error: R2_PUBLIC_URL environment variable not set"
+    exit 1
+fi
+DOWNLOAD_URL="${R2_PUBLIC_URL}/Aizen-${MARKETING_VERSION}.dmg"
 
 # Create or update appcast.xml
 if [ ! -f "$APPCAST_FILE" ]; then
@@ -92,16 +97,16 @@ fi
 
 ITEM_TEMPLATE="
     <item>
-        <title>Version $VERSION</title>
+        <title>Version $MARKETING_VERSION</title>
         <description><![CDATA[$RELEASE_NOTES]]></description>
         <pubDate>$(date -R)</pubDate>
-        <sparkle:version>$VERSION</sparkle:version>
-        <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
+        <sparkle:version>$BUILD_VERSION</sparkle:version>
+        <sparkle:shortVersionString>$MARKETING_VERSION</sparkle:shortVersionString>
         <enclosure url=\"$DOWNLOAD_URL\"
                    length=\"$DMG_SIZE\"
                    type=\"application/octet-stream\"
                    sparkle:edSignature=\"$SIGNATURE\" />
-        <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+        <sparkle:minimumSystemVersion>13.5</sparkle:minimumSystemVersion>
     </item>"
 
 # Insert the new item into appcast (before closing </channel>)
@@ -111,7 +116,8 @@ echo "✅ Appcast generated successfully!"
 echo ""
 echo "Appcast location: $APPCAST_FILE"
 echo "Download URL: $DOWNLOAD_URL"
-echo "Version: $VERSION"
+echo "Build Version: $BUILD_VERSION"
+echo "Marketing Version: $MARKETING_VERSION"
 echo "Signature: $SIGNATURE"
 echo ""
 echo "Next steps:"
