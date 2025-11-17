@@ -198,11 +198,14 @@ struct WebViewWrapper: NSViewRepresentable {
         // Suppress content rendering delays
         configuration.suppressesIncrementalRendering = false
 
-        // Media playback settings (macOS only has these on iOS, so skip)
-        #if os(iOS)
-        configuration.allowsInlineMediaPlayback = true
-        configuration.mediaTypesRequiringUserActionForPlayback = []
-        #endif
+        // Media playback settings - macOS uses preferences, not configuration
+        // allowsInlineMediaPlayback, mediaTypesRequiringUserActionForPlayback are iOS-only
+        // On macOS, media plays inline by default and user action is controlled via preferences
+
+        // Enable media playback without user interaction via private API
+        configuration.setValue(false, forKey: "_requiresUserActionForMediaPlayback")
+
+        // Picture-in-picture is already enabled via preferences above (line 193)
 
         // Set application name to Safari to bypass WKWebView detection
         configuration.applicationNameForUserAgent = "Version/18.0 Safari/605.1.15"
