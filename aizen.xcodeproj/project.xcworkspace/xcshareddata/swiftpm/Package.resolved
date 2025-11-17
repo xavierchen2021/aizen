@@ -1,13 +1,13 @@
 {
-  "originHash" : "625f9dbc4219c6259401664e1533fa56560bff06218fadad6ef92bae154c8a2b",
+  "originHash" : "0b1e7540e9c066d4975773f3309efdb3ab97930486880278f9befe8f0e7a75ab",
   "pins" : [
     {
       "identity" : "codeeditlanguages",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/CodeEditApp/CodeEditLanguages.git",
       "state" : {
-        "revision" : "331d5dbc5fc8513be5848fce8a2a312908f36a11",
-        "version" : "0.1.20"
+        "branch" : "main",
+        "revision" : "32a1ddcb44d0bcf9bdb41ae426fa1bb7198e62fe"
       }
     },
     {
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/sparkle-project/Sparkle",
       "state" : {
-        "revision" : "9a1d2a19d3595fcf8d9c447173f9a1687b3dcadb",
-        "version" : "2.8.0"
+        "revision" : "5581748cef2bae787496fe6d61139aebe0a451f6",
+        "version" : "2.8.1"
       }
     },
     {
@@ -52,7 +52,7 @@
       "location" : "https://github.com/apple/swift-markdown",
       "state" : {
         "branch" : "main",
-        "revision" : "0186e808140db5eb5ba9b052e86fbe15b88f7975"
+        "revision" : "f7a559ec0d1f4a6a31b82187b5cdf97c632f68f6"
       }
     },
     {

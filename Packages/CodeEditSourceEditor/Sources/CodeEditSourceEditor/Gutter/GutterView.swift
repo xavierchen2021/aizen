@@ -9,6 +9,13 @@ import AppKit
 import CodeEditTextView
 import CodeEditTextViewObjC
 
+/// Represents the type of change for a line in git diff
+public enum GitDiffLineStatus: Equatable {
+    case added
+    case modified
+    case deleted(afterLine: Int)
+}
+
 public protocol GutterViewDelegate: AnyObject {
     func gutterViewWidthDidUpdate()
 }
@@ -81,6 +88,17 @@ public class GutterView: NSView {
         }
     }
 
+    /// Git diff indicators for each line
+    public var gitDiffStatus: [Int: GitDiffLineStatus] = [:] {
+        didSet {
+            gitDiffRibbon.gitDiffStatus = gitDiffStatus
+            updateWidthIfNeeded()
+        }
+    }
+
+    /// The view that draws git diff indicators in the gutter
+    var gitDiffRibbon: GitDiffRibbonView
+
     private weak var textView: TextView?
     private weak var delegate: GutterViewDelegate?
     private var maxLineNumberWidth: CGFloat = 0
@@ -117,13 +135,23 @@ public class GutterView: NSView {
         true
     }
 
-    /// We override this variable so we can update the ``foldingRibbon``'s frame to match the gutter.
+    /// We override this variable so we can update the ribbon frames to match the gutter.
     override public var frame: NSRect {
         get {
             super.frame
         }
         set {
             super.frame = newValue
+
+            // Git diff ribbon on the left edge
+            gitDiffRibbon.frame = NSRect(
+                x: 0,
+                y: 0.0,
+                width: GitDiffRibbonView.width,
+                height: newValue.height
+            )
+
+            // Folding ribbon on the right edge
             foldingRibbon.frame = NSRect(
                 x: newValue.width - edgeInsets.trailing - foldingRibbonWidth + foldingRibbonPadding,
                 y: 0.0,
@@ -161,6 +189,7 @@ public class GutterView: NSView {
         self.delegate = delegate
 
         foldingRibbon = LineFoldRibbonView(controller: controller)
+        gitDiffRibbon = GitDiffRibbonView(controller: controller)
 
         super.init(frame: .zero)
         clipsToBounds = true
@@ -169,6 +198,7 @@ public class GutterView: NSView {
         translatesAutoresizingMaskIntoConstraints = false
         layer?.masksToBounds = true
 
+        addSubview(gitDiffRibbon)
         addSubview(foldingRibbon)
 
         NotificationCenter.default.addObserver(
@@ -204,7 +234,9 @@ public class GutterView: NSView {
             maxLineLength = lineStorageDigits
         }
 
-        let newWidth = maxLineNumberWidth + edgeInsets.horizontal + foldingRibbonWidth
+        // Include space for git diff ribbon
+        let gitDiffSpace = gitDiffStatus.isEmpty ? 0 : (GitDiffRibbonView.width + 4)
+        let newWidth = maxLineNumberWidth + edgeInsets.horizontal + foldingRibbonWidth + gitDiffSpace
         if frame.size.width != newWidth {
             frame.size.width = newWidth
             delegate?.gutterViewWidthDidUpdate()

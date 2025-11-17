@@ -82,6 +82,7 @@ struct FileContentTabView: View {
                 if let selectedFile = viewModel.openFiles.first(where: { $0.id == viewModel.selectedFileId }) {
                     FileContentView(
                         file: selectedFile,
+                        repoPath: viewModel.currentPath,
                         onContentChange: { newContent in
                             viewModel.updateFileContent(id: selectedFile.id, content: newContent)
                         },

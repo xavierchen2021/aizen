@@ -13,10 +13,14 @@ struct CodeEditorView: View {
     let content: String
     let language: String?
     var isEditable: Bool = false
+    var filePath: String? = nil
+    var repoPath: String? = nil
     var onContentChange: ((String) -> Void)?
 
     @State private var text: String
     @State private var editorState = SourceEditorState()
+    @State private var gitDiffStatus: [Int: GitDiffLineStatus] = [:]
+    @State private var gitDiffCoordinator = GitDiffCoordinator()
 
     // Editor settings from AppStorage
     @AppStorage("editorTheme") private var editorTheme: String = "Catppuccin Mocha"
@@ -27,10 +31,19 @@ struct CodeEditorView: View {
     @AppStorage("editorShowGutter") private var editorShowGutter: Bool = true
     @AppStorage("editorIndentSpaces") private var editorIndentSpaces: Int = 4
 
-    init(content: String, language: String?, isEditable: Bool = false, onContentChange: ((String) -> Void)? = nil) {
+    init(
+        content: String,
+        language: String?,
+        isEditable: Bool = false,
+        filePath: String? = nil,
+        repoPath: String? = nil,
+        onContentChange: ((String) -> Void)? = nil
+    ) {
         self.content = content
         self.language = language
         self.isEditable = isEditable
+        self.filePath = filePath
+        self.repoPath = repoPath
         self.onContentChange = onContentChange
         _text = State(initialValue: content)
     }
@@ -55,7 +68,8 @@ struct CodeEditorView: View {
                     showMinimap: editorShowMinimap
                 )
             ),
-            state: $editorState
+            state: $editorState,
+            coordinators: [gitDiffCoordinator]
         )
         .disabled(!isEditable)
         .clipped()
@@ -68,6 +82,34 @@ struct CodeEditorView: View {
             if isEditable {
                 onContentChange?(newValue)
             }
+        }
+        .task {
+            // Load git diff status when view appears
+            await loadGitDiff()
+        }
+        .onChange(of: content) { _ in
+            // Reload git diff when content changes
+            Task {
+                await loadGitDiff()
+            }
+        }
+    }
+
+    private func loadGitDiff() async {
+        guard let filePath = filePath,
+              let repoPath = repoPath else {
+            return
+        }
+
+        do {
+            let provider = GitDiffProvider()
+            let diffStatus = try await provider.getLineDiff(filePath: filePath, repoPath: repoPath)
+            await MainActor.run {
+                gitDiffStatus = diffStatus
+                gitDiffCoordinator.gitDiffStatus = diffStatus
+            }
+        } catch {
+            // Silently fail if git diff isn't available
         }
     }
 

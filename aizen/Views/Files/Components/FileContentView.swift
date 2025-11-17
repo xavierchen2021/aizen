@@ -9,6 +9,7 @@ import SwiftUI
 
 struct FileContentView: View {
     let file: OpenFileInfo
+    let repoPath: String?
     let onContentChange: (String) -> Void
     let onSave: () -> Void
     let onRevert: () -> Void
@@ -90,6 +91,8 @@ struct FileContentView: View {
                     content: file.content,
                     language: detectLanguage(from: file.path),
                     isEditable: true,
+                    filePath: file.path,
+                    repoPath: repoPath,
                     onContentChange: onContentChange
                 )
                 .id(file.id)
