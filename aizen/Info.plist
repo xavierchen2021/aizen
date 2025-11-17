@@ -20,8 +20,10 @@
 	<string>public.app-category.developer-tools</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.5</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Aizen's built-in browser needs access to your camera for websites that use video features.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Aizen needs access to your microphone to record voice messages for transcription.</string>
+	<string>Aizen's built-in browser needs access to your microphone for websites that use audio features and for voice message transcription.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Aizen needs access to speech recognition to transcribe your voice messages to text.</string>
 	<key>SUFeedURL</key>

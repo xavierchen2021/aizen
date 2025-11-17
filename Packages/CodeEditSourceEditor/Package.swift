@@ -21,7 +21,7 @@ let package = Package(
         // tree-sitter languages (remote - has complex submodules)
         .package(
             url: "https://github.com/CodeEditApp/CodeEditLanguages.git",
-            exact: "0.1.20"
+            from: "0.1.21"
         ),
         // CodeEditSymbols
         .package(
