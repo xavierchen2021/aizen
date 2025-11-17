@@ -48,7 +48,33 @@ actor GitBranchService: GitDomainService {
         try await executeVoid(["branch", flag, name], at: path)
     }
 
+    func mergeBranch(at path: String, branch: String) async throws -> MergeResult {
+        do {
+            let output = try await executor.executeGit(arguments: ["merge", branch], at: path)
+
+            if output.contains("Already up to date") || output.contains("Already up-to-date") {
+                return .alreadyUpToDate
+            }
+
+            return .success
+        } catch {
+            let errorMessage = error.localizedDescription
+
+            if errorMessage.contains("CONFLICT") || errorMessage.contains("Merge conflict") {
+                let conflictedFiles = try await parseConflictedFiles(at: path)
+                return .conflict(files: conflictedFiles)
+            }
+
+            throw error
+        }
+    }
+
     // MARK: - Private Helpers
+
+    private func parseConflictedFiles(at path: String) async throws -> [String] {
+        let output = try await executor.executeGit(arguments: ["diff", "--name-only", "--diff-filter=U"], at: path)
+        return output.split(separator: "\n").map { String($0).trimmingCharacters(in: .whitespaces) }
+    }
 
     private func parseBranchList(_ output: String) -> [BranchInfo] {
         let lines = output.split(separator: "\n").map(String.init)

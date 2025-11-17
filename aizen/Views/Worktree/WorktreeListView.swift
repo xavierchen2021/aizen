@@ -110,6 +110,13 @@ struct WorktreeListRowView: View {
     @State private var showingDeleteConfirmation = false
     @State private var hasUnsavedChanges = false
     @State private var errorMessage: String?
+    @State private var worktreeStatuses: [WorktreeStatusInfo] = []
+    @State private var isLoadingStatuses = false
+    @State private var mergeErrorMessage: String?
+    @State private var mergeConflictFiles: [String] = []
+    @State private var showingMergeConflict = false
+    @State private var showingMergeSuccess = false
+    @State private var mergeSuccessMessage = ""
 
     var body: some View {
         HStack(spacing: 12) {
@@ -191,6 +198,26 @@ struct WorktreeListRowView: View {
                 Label(String(localized: "worktree.detail.openEditor"), systemImage: "chevron.left.forwardslash.chevron.right")
             }
 
+            Divider()
+
+            Menu {
+                ForEach(worktreeStatuses.filter { $0.worktree.id != worktree.id }, id: \.worktree.id) { statusInfo in
+                    Button {
+                        performMerge(from: statusInfo.worktree, to: worktree)
+                    } label: {
+                        HStack {
+                            Text(statusInfo.branch)
+                            if statusInfo.hasUncommittedChanges {
+                                Image(systemName: "exclamationmark.triangle")
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Label("Pull from", systemImage: "arrow.down.circle")
+            }
+
             if !worktree.isPrimary {
                 Divider()
 
@@ -224,6 +251,36 @@ struct WorktreeListRowView: View {
             if let error = errorMessage {
                 Text(error)
             }
+        }
+        .alert("Merge Conflict", isPresented: $showingMergeConflict) {
+            Button("OK") {
+                mergeConflictFiles = []
+            }
+        } message: {
+            VStack(alignment: .leading) {
+                Text("Merge conflicts detected in the following files:")
+                ForEach(mergeConflictFiles, id: \.self) { file in
+                    Text("• \(file)")
+                }
+                Text("\nResolve conflicts manually and commit the changes.")
+            }
+        }
+        .alert("Merge Successful", isPresented: $showingMergeSuccess) {
+            Button("OK") {}
+        } message: {
+            Text(mergeSuccessMessage)
+        }
+        .alert("Merge Error", isPresented: .constant(mergeErrorMessage != nil)) {
+            Button("OK") {
+                mergeErrorMessage = nil
+            }
+        } message: {
+            if let error = mergeErrorMessage {
+                Text(error)
+            }
+        }
+        .onAppear {
+            loadWorktreeStatuses()
         }
     }
 
@@ -270,6 +327,69 @@ struct WorktreeListRowView: View {
             } catch {
                 await MainActor.run {
                     errorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func loadWorktreeStatuses() {
+        guard !isLoadingStatuses else { return }
+
+        Task {
+            await MainActor.run {
+                isLoadingStatuses = true
+            }
+
+            var statuses: [WorktreeStatusInfo] = []
+
+            for wt in allWorktrees {
+                do {
+                    let hasChanges = try await repositoryManager.hasUnsavedChanges(wt)
+                    let branch = wt.branch ?? "unknown"
+                    statuses.append(WorktreeStatusInfo(
+                        worktree: wt,
+                        hasUncommittedChanges: hasChanges,
+                        branch: branch
+                    ))
+                } catch {
+                    // Skip worktrees with errors
+                    continue
+                }
+            }
+
+            await MainActor.run {
+                worktreeStatuses = statuses
+                isLoadingStatuses = false
+            }
+        }
+    }
+
+    private func performMerge(from source: Worktree, to target: Worktree) {
+        Task {
+            do {
+                let result = try await repositoryManager.mergeFromWorktree(target: target, source: source)
+
+                await MainActor.run {
+                    switch result {
+                    case .success:
+                        mergeSuccessMessage = "Successfully merged \(source.branch ?? "unknown") into \(target.branch ?? "unknown")"
+                        showingMergeSuccess = true
+
+                    case .conflict(let files):
+                        mergeConflictFiles = files
+                        showingMergeConflict = true
+
+                    case .alreadyUpToDate:
+                        mergeSuccessMessage = "Already up to date with \(source.branch ?? "unknown")"
+                        showingMergeSuccess = true
+                    }
+
+                    // Reload statuses after merge
+                    loadWorktreeStatuses()
+                }
+            } catch {
+                await MainActor.run {
+                    mergeErrorMessage = error.localizedDescription
                 }
             }
         }

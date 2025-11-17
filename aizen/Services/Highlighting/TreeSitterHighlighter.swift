@@ -108,40 +108,178 @@ enum HighlightError: Error {
 /// Maps tree-sitter capture names to theme colors
 struct HighlightThemeMapper {
     /// Map a tree-sitter capture name to a color from the theme
-    static func color(for captureName: String, theme: EditorTheme) -> NSColor? {
-        // Tree-sitter capture names follow patterns like:
-        // @keyword, @string, @comment, @function, @type, @variable, etc.
+    /// Uses hierarchical matching to support the full tree-sitter capture group specification
+    nonisolated static func color(for captureName: String, theme: EditorTheme) -> NSColor? {
+        // Tree-sitter capture names follow hierarchical patterns:
+        // @keyword, @keyword.function, @keyword.return, etc.
+        // More specific matches should take precedence over general ones
 
         let name = captureName.lowercased()
 
-        // Keywords
-        if name.contains("keyword") {
-            return theme.keywords.color
+        // PHASE 1: CRITICAL CAPTURES - High Visual Impact
+
+        // HTML/JSX Tags (@tag, @tag.attribute, @tag.delimiter, @tag.builtin)
+        if name.contains("tag") {
+            if name.contains("attribute") {
+                return theme.attributes.color // Tag attributes like href, class
+            }
+            if name.contains("delimiter") {
+                return theme.attributes.color // <, >, </, />
+            }
+            return theme.types.color // Tag names like <div>, <span>
         }
 
-        // Strings
-        if name.contains("string") || name.contains("character") {
+        // Constructors (@constructor)
+        if name.contains("constructor") {
+            return theme.types.color // new MyClass(), enum constructors
+        }
+
+        // Modules and Namespaces (@module, @module.builtin, @namespace, @label)
+        if name.contains("module") || name.contains("namespace") || name.contains("label") {
+            return theme.types.color // import statements, package names, Rust lifetimes
+        }
+
+        // Markdown Markup (@markup.* and @text.* from CodeEditLanguages)
+        if name.contains("markup") || (name.contains("text") && !name.contains("_text")) {
+            // Headings (@markup.heading, @text.title)
+            if name.contains("heading") || name.contains("title") {
+                return theme.keywords.color // # Heading - prominent
+            }
+            // Links and URLs (@markup.link, @text.uri, @text.reference)
+            if name.contains("link") || name.contains("url") || name.contains("uri") || name.contains("reference") {
+                return theme.attributes.color // [text](url)
+            }
+            // Strong/Bold (@markup.strong, @text.strong)
+            if name.contains("strong") || name.contains("bold") {
+                return theme.keywords.color // **bold**
+            }
+            // Emphasis/Italic (@markup.italic, @text.emphasis)
+            if name.contains("italic") || name.contains("emphasis") {
+                return theme.comments.color // *italic*
+            }
+            // Code blocks and inline code (@markup.raw, @text.literal)
+            if name.contains("raw") || name.contains("code") || name.contains("literal") {
+                return theme.strings.color // `code` or ```code```
+            }
+            // Quotes
+            if name.contains("quote") {
+                return theme.comments.color // > quote
+            }
+            // Math
+            if name.contains("math") {
+                return theme.numbers.color // $math$
+            }
+            // Lists
+            if name.contains("list") {
+                return theme.attributes.color // - item, 1. item, [ ] checkbox
+            }
+            // Strikethrough
+            if name.contains("strikethrough") {
+                return theme.comments.color // ~~struck~~
+            }
+            // Default markup (only for "markup" or "text" prefix, not containing "_text")
+            if name.starts(with: "markup") || name.starts(with: "text") {
+                return theme.text.color
+            }
+        }
+
+        // PHASE 2: ENHANCED DISTINCTIONS - Medium Impact
+
+        // Built-in variables (@variable.builtin - this, self, super)
+        if name.contains("variable") {
+            if name.contains("builtin") {
+                return theme.values.color // Highlight built-ins differently
+            }
+            if name.contains("property") || name.contains("parameter") || name.contains("member") {
+                return theme.variables.color
+            }
+            return theme.variables.color
+        }
+
+        // String escape sequences (@string.escape - \n, \t, \", etc.)
+        if name.contains("string") {
+            if name.contains("escape") {
+                return theme.attributes.color // Make escapes visible
+            }
+            if name.contains("character") {
+                return theme.strings.color
+            }
             return theme.strings.color
         }
 
-        // Comments
+        // Comment annotations (@comment.error, @comment.warning, @comment.todo, @comment.note)
         if name.contains("comment") {
+            if name.contains("error") || name.contains("fixme") {
+                return NSColor.systemRed // ERROR, FIXME - red
+            }
+            if name.contains("warning") || name.contains("hack") {
+                return NSColor.systemOrange // WARNING, HACK - orange
+            }
+            if name.contains("todo") || name.contains("note") {
+                return NSColor.systemBlue // TODO, NOTE - blue
+            }
             return theme.comments.color
         }
 
-        // Types
+        // Built-in constants (@constant.builtin - true, false, null, nil)
+        if name.contains("constant") {
+            if name.contains("builtin") {
+                return theme.values.color
+            }
+            if name.contains("macro") {
+                return theme.attributes.color // Preprocessor constants
+            }
+            return theme.values.color
+        }
+
+        // Boolean values (often separate from constants)
+        if name.contains("boolean") {
+            return theme.values.color
+        }
+
+        // PHASE 3: ADDITIONAL COVERAGE - Lower Priority
+
+        // Git Diff (@diff.plus, @diff.minus, @diff.delta)
+        if name.contains("diff") {
+            if name.contains("plus") || name.contains("addition") {
+                return NSColor.systemGreen // Added lines
+            }
+            if name.contains("minus") || name.contains("deletion") {
+                return NSColor.systemRed // Deleted lines
+            }
+            if name.contains("delta") || name.contains("changed") {
+                return NSColor.systemYellow // Modified lines
+            }
+            return theme.text.color
+        }
+
+        // Keywords (with subtypes for finer control)
+        if name.contains("keyword") {
+            // All keyword types get the same color, but we check subtypes
+            // for potential future customization
+            return theme.keywords.color
+        }
+
+        // Types and Classes
         if name.contains("type") || name.contains("class") || name.contains("interface") {
+            if name.contains("builtin") {
+                return theme.types.color // Built-in types like int, string
+            }
             return theme.types.color
         }
 
-        // Functions
+        // Functions and Methods
         if name.contains("function") || name.contains("method") {
+            if name.contains("builtin") {
+                return theme.commands.color // Built-in functions
+            }
+            if name.contains("macro") {
+                return theme.attributes.color // Preprocessor macros
+            }
+            if name.contains("call") {
+                return theme.commands.color // Function calls vs definitions
+            }
             return theme.commands.color
-        }
-
-        // Variables and properties
-        if name.contains("variable") || name.contains("property") || name.contains("parameter") {
-            return theme.variables.color
         }
 
         // Numbers
@@ -154,19 +292,28 @@ struct HighlightThemeMapper {
             return theme.attributes.color
         }
 
-        // Constants and values
-        if name.contains("constant") || name.contains("boolean") {
-            return theme.values.color
-        }
-
         // Attributes and decorators
         if name.contains("attribute") || name.contains("decorator") || name.contains("annotation") {
             return theme.attributes.color
         }
 
-        // Punctuation (use default text color)
-        if name.contains("punctuation") || name.contains("delimiter") || name.contains("bracket") {
+        // Punctuation - refined handling
+        if name.contains("punctuation") {
+            if name.contains("bracket") {
+                return theme.attributes.color // Make brackets visible: (), {}, []
+            }
+            if name.contains("delimiter") {
+                return theme.text.color // Delimiters more muted: ;, ., ,
+            }
+            if name.contains("special") {
+                return theme.attributes.color // Special punctuation like ${}
+            }
             return theme.text.color
+        }
+
+        // Character literals (separate from strings in some languages)
+        if name.contains("character") {
+            return theme.strings.color
         }
 
         // Default: return nil to use default text color

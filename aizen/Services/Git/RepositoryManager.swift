@@ -260,6 +260,25 @@ class RepositoryManager: ObservableObject {
         return (branch, status.ahead, status.behind)
     }
 
+    func mergeFromWorktree(target: Worktree, source: Worktree) async throws -> MergeResult {
+        guard let targetPath = target.path else {
+            throw GitError.worktreeNotFound
+        }
+
+        guard let sourceBranch = source.branch else {
+            throw GitError.worktreeNotFound
+        }
+
+        // Validate target worktree has no uncommitted changes
+        let hasChanges = try await hasUnsavedChanges(target)
+        if hasChanges {
+            throw GitError.commandFailed(message: "Target worktree has uncommitted changes. Please commit or stash them first.")
+        }
+
+        // Perform merge
+        return try await branchService.mergeBranch(at: targetPath, branch: sourceBranch)
+    }
+
     // MARK: - File System Operations
 
     func openInFinder(_ path: String) {
