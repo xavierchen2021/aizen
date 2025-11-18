@@ -169,6 +169,9 @@ class BrowserSessionManager: ObservableObject {
             currentURL = url
         }
 
+        // Trigger UI update for tab titles
+        objectWillChange.send()
+
         // Debounce save to reduce Core Data writes
         debouncedSave()
     }
@@ -185,6 +188,9 @@ class BrowserSessionManager: ObservableObject {
         if activeSessionId == sessionId {
             pageTitle = title
         }
+
+        // Trigger UI update for tab titles
+        objectWillChange.send()
 
         // Debounce save to reduce Core Data writes
         debouncedSave()

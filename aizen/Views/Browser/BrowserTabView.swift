@@ -409,8 +409,19 @@ struct EmptyTabStateView: View {
         let trimmedInput = urlInput.trimmingCharacters(in: .whitespaces)
         guard !trimmedInput.isEmpty else { return }
 
-        let normalizedURL = URLNormalizer.normalize(trimmedInput)
-        manager.navigateToURL(normalizedURL)
-        urlInput = ""
+        // Wrap in error handling to prevent crashes
+        do {
+            let normalizedURL = URLNormalizer.normalize(trimmedInput)
+
+            // Validate URL before navigating
+            guard !normalizedURL.isEmpty else { return }
+
+            manager.navigateToURL(normalizedURL)
+            urlInput = ""
+        } catch {
+            print("Error handling URL submission: \(error)")
+            // Clear input on error
+            urlInput = ""
+        }
     }
 }

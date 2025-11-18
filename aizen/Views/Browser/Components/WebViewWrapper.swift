@@ -119,11 +119,27 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         }
     }
 
-    // MARK: - KVO for Progress
+    // MARK: - KVO for Progress and URL
 
     override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
-        if keyPath == "estimatedProgress", let webView = object as? WKWebView {
+        guard let webView = object as? WKWebView else { return }
+
+        if keyPath == "estimatedProgress" {
             parent.loadingProgress = webView.estimatedProgress
+        } else if keyPath == "URL" {
+            // Update URL bar when URL changes (catches all navigation types)
+            if let url = webView.url?.absoluteString {
+                Task { @MainActor in
+                    parent.onURLChange(url)
+                }
+            }
+        } else if keyPath == "title" {
+            // Update title when it changes
+            if let title = webView.title {
+                Task { @MainActor in
+                    parent.onTitleChange(title)
+                }
+            }
         }
     }
 }
@@ -202,11 +218,6 @@ struct WebViewWrapper: NSViewRepresentable {
         // allowsInlineMediaPlayback, mediaTypesRequiringUserActionForPlayback are iOS-only
         // On macOS, media plays inline by default and user action is controlled via preferences
 
-        // Enable media playback without user interaction via private API
-        configuration.setValue(false, forKey: "_requiresUserActionForMediaPlayback")
-
-        // Picture-in-picture is already enabled via preferences above (line 193)
-
         // Set application name to Safari to bypass WKWebView detection
         configuration.applicationNameForUserAgent = "Version/18.0 Safari/605.1.15"
 
@@ -229,8 +240,10 @@ struct WebViewWrapper: NSViewRepresentable {
             webView.isInspectable = true
         }
 
-        // Observe loading progress
+        // Observe loading progress, URL changes, and title changes
         webView.addObserver(context.coordinator, forKeyPath: "estimatedProgress", options: .new, context: nil)
+        webView.addObserver(context.coordinator, forKeyPath: "URL", options: .new, context: nil)
+        webView.addObserver(context.coordinator, forKeyPath: "title", options: .new, context: nil)
 
         // Create wrapper view to fix Web Inspector flickering
         // Wrapping WKWebView prevents autolayout conflicts with inspector
@@ -259,9 +272,11 @@ struct WebViewWrapper: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ nsView: NSView, coordinator: WebViewCoordinator) {
-        // Find WKWebView in container and remove observer
+        // Find WKWebView in container and remove all observers
         if let webView = nsView.subviews.first(where: { $0 is WKWebView }) as? WKWebView {
             webView.removeObserver(coordinator, forKeyPath: "estimatedProgress")
+            webView.removeObserver(coordinator, forKeyPath: "URL")
+            webView.removeObserver(coordinator, forKeyPath: "title")
         }
     }
 
@@ -287,10 +302,20 @@ struct WebViewWrapper: NSViewRepresentable {
         // Clear failed URL on new navigation attempt
         context.coordinator.lastFailedURL = nil
 
-        // Only reload if the new URL is actually different from current
-        if let newURL = URL(string: url) {
-            webView.load(URLRequest(url: newURL))
+        // Validate and load URL with error handling
+        guard let newURL = URL(string: url) else {
+            print("Invalid URL string: \(url)")
+            return
         }
+
+        // Additional validation for URL components
+        guard newURL.scheme != nil || url.hasPrefix("about:") else {
+            print("URL missing scheme: \(url)")
+            return
+        }
+
+        // Load the URL
+        webView.load(URLRequest(url: newURL))
     }
 
     // MARK: - Navigation Methods

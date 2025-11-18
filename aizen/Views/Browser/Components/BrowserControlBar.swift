@@ -121,11 +121,21 @@ struct BrowserControlBar: View {
         let trimmedInput = urlInput.trimmingCharacters(in: .whitespaces)
         guard !trimmedInput.isEmpty else { return }
 
-        let finalURL = URLNormalizer.normalize(trimmedInput)
-        onNavigate(finalURL)
+        // Wrap in do-catch to prevent crashes
+        do {
+            let finalURL = URLNormalizer.normalize(trimmedInput)
 
-        // Unfocus the text field so URL updates from navigation will be visible
-        isURLFieldFocused = false
+            // Validate URL is not empty before navigating
+            guard !finalURL.isEmpty else { return }
+
+            onNavigate(finalURL)
+
+            // Unfocus the text field so URL updates from navigation will be visible
+            isURLFieldFocused = false
+        } catch {
+            print("Error normalizing URL: \(error)")
+            // Silently fail - don't crash the app
+        }
     }
 
     private func handleURLChange(_ newValue: String) {
