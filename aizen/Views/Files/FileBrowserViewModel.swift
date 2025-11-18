@@ -9,6 +9,7 @@ import Foundation
 import SwiftUI
 import Combine
 import CoreData
+import AppKit
 
 struct FileItem: Identifiable {
     let id = UUID()
@@ -207,5 +208,124 @@ class FileBrowserViewModel: ObservableObject {
 
     func isExpanded(path: String) -> Bool {
         expandedPaths.contains(path)
+    }
+
+    // MARK: - File Operations
+
+    private let fileService = FileService()
+
+    func createNewFile(parentPath: String, name: String) async {
+        let filePath = (parentPath as NSString).appendingPathComponent(name)
+
+        do {
+            try await fileService.createFile(at: filePath)
+            ToastManager.shared.show("Created \(name)", type: .success)
+
+            // Refresh the parent directory by toggling expansion
+            if expandedPaths.contains(parentPath) {
+                expandedPaths.remove(parentPath)
+                expandedPaths.insert(parentPath)
+            }
+
+            // Open the new file
+            await openFile(path: filePath)
+        } catch {
+            ToastManager.shared.show(error.localizedDescription, type: .error)
+        }
+    }
+
+    func createNewFolder(parentPath: String, name: String) async {
+        let folderPath = (parentPath as NSString).appendingPathComponent(name)
+
+        do {
+            try await fileService.createDirectory(at: folderPath)
+            ToastManager.shared.show("Created folder \(name)", type: .success)
+
+            // Refresh the parent directory
+            if expandedPaths.contains(parentPath) {
+                expandedPaths.remove(parentPath)
+                expandedPaths.insert(parentPath)
+            }
+
+            // Auto-expand the newly created folder
+            expandedPaths.insert(folderPath)
+        } catch {
+            ToastManager.shared.show(error.localizedDescription, type: .error)
+        }
+    }
+
+    func renameItem(oldPath: String, newName: String) async {
+        let parentPath = (oldPath as NSString).deletingLastPathComponent
+        let newPath = (parentPath as NSString).appendingPathComponent(newName)
+
+        do {
+            try await fileService.renameItem(from: oldPath, to: newPath)
+            ToastManager.shared.show("Renamed to \(newName)", type: .success)
+
+            // If file was open, update its info
+            if let index = openFiles.firstIndex(where: { $0.path == oldPath }) {
+                let fileInfo = openFiles[index]
+                openFiles[index] = OpenFileInfo(
+                    id: fileInfo.id,
+                    name: newName,
+                    path: newPath,
+                    content: fileInfo.content,
+                    hasUnsavedChanges: fileInfo.hasUnsavedChanges
+                )
+            }
+
+            // Refresh parent directory
+            if expandedPaths.contains(parentPath) {
+                expandedPaths.remove(parentPath)
+                expandedPaths.insert(parentPath)
+            }
+
+            // If it was a directory that was expanded, update its path in expandedPaths
+            if expandedPaths.contains(oldPath) {
+                expandedPaths.remove(oldPath)
+                expandedPaths.insert(newPath)
+            }
+
+            saveSession()
+        } catch {
+            ToastManager.shared.show(error.localizedDescription, type: .error)
+        }
+    }
+
+    func deleteItem(path: String) async {
+        let fileName = (path as NSString).lastPathComponent
+        let parentPath = (path as NSString).deletingLastPathComponent
+
+        do {
+            try await fileService.deleteItem(at: path)
+            ToastManager.shared.show("Deleted \(fileName)", type: .success)
+
+            // Close file if it was open
+            if let openFile = openFiles.first(where: { $0.path == path }) {
+                closeFile(id: openFile.id)
+            }
+
+            // Remove from expanded paths if it was a directory
+            expandedPaths.remove(path)
+
+            // Refresh parent directory
+            if expandedPaths.contains(parentPath) {
+                expandedPaths.remove(parentPath)
+                expandedPaths.insert(parentPath)
+            }
+        } catch {
+            ToastManager.shared.show(error.localizedDescription, type: .error)
+        }
+    }
+
+    func copyPathToClipboard(path: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(path, forType: .string)
+        ToastManager.shared.show("Path copied to clipboard", type: .success)
+    }
+
+    func revealInFinder(path: String) {
+        NSWorkspace.shared.selectFile(path, inFileViewerRootedAtPath: "")
     }
 }

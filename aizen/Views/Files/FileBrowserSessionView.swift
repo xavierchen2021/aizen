@@ -49,7 +49,8 @@ struct FileBrowserSessionView: View {
                             Task { @MainActor in
                                 await viewModel.openFile(path: path)
                             }
-                        }
+                        },
+                        viewModel: viewModel
                     )
                     .padding(.vertical, 4)
                 }
