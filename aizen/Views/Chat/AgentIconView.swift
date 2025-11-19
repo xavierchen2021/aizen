@@ -97,6 +97,11 @@ struct AgentIconView: View {
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size, height: size)
+        case "opencode":
+            Image("opencode")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size, height: size)
         default:
             defaultIcon
         }

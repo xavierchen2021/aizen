@@ -11,6 +11,7 @@ import CoreData
 struct ContentView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @StateObject private var repositoryManager: RepositoryManager
+    @StateObject private var tabStateManager = WorktreeTabStateManager()
 
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \Workspace.order, ascending: true)],
@@ -55,7 +56,8 @@ struct ContentView: View {
                 WorktreeListView(
                     repository: repository,
                     selectedWorktree: $selectedWorktree,
-                    repositoryManager: repositoryManager
+                    repositoryManager: repositoryManager,
+                    tabStateManager: tabStateManager
                 )
                 .navigationSplitViewColumnWidth(min: 250, ideal: 300, max: 400)
             } else {
@@ -72,6 +74,7 @@ struct ContentView: View {
                 WorktreeDetailView(
                     worktree: worktree,
                     repositoryManager: repositoryManager,
+                    tabStateManager: tabStateManager,
                     onWorktreeDeleted: { nextWorktree in
                         selectedWorktree = nextWorktree
                     }

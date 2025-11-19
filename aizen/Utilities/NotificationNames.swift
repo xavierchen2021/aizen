@@ -23,4 +23,7 @@ extension Notification.Name {
 
     /// Posted when Escape is pressed to interrupt the current agent operation
     static let interruptAgentShortcut = Notification.Name("InterruptAgentShortcut")
+
+    /// Posted when Command+P is pressed to open file search
+    static let fileSearchShortcut = Notification.Name("FileSearchShortcut")
 }

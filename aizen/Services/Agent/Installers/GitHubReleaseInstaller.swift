@@ -76,11 +76,25 @@ actor GitHubReleaseInstaller {
     }
 
     private func buildDownloadURL(repo: String, tagName: String, assetPattern: String) -> String {
-        let arch = getArchitecture()
-        return "https://github.com/\(repo)/releases/download/\(tagName)/"
-            + assetPattern
-                .replacingOccurrences(of: "{version}", with: tagName)
-                .replacingOccurrences(of: "{arch}", with: arch)
+        var url = "https://github.com/\(repo)/releases/download/\(tagName)/" + assetPattern
+        url = url.replacingOccurrences(of: "{version}", with: tagName)
+
+        // Handle architecture placeholders
+        #if arch(arm64)
+        let standardArch = "aarch64"
+        let shortArch = "arm64"
+        #elseif arch(x86_64)
+        let standardArch = "x86_64"
+        let shortArch = "x64"
+        #else
+        let standardArch = "unknown"
+        let shortArch = "unknown"
+        #endif
+
+        url = url.replacingOccurrences(of: "{arch}", with: standardArch)
+        url = url.replacingOccurrences(of: "{short-arch}", with: shortArch)
+
+        return url
     }
 
     private func getArchitecture() -> String {

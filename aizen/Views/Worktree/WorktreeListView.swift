@@ -11,6 +11,7 @@ struct WorktreeListView: View {
     @ObservedObject var repository: Repository
     @Binding var selectedWorktree: Worktree?
     @ObservedObject var repositoryManager: RepositoryManager
+    @ObservedObject var tabStateManager: WorktreeTabStateManager
 
     @State private var showingCreateWorktree = false
     @State private var searchText = ""
@@ -65,7 +66,8 @@ struct WorktreeListView: View {
                         isSelected: selectedWorktree?.id == worktree.id,
                         repositoryManager: repositoryManager,
                         allWorktrees: worktrees,
-                        selectedWorktree: $selectedWorktree
+                        selectedWorktree: $selectedWorktree,
+                        tabStateManager: tabStateManager
                     )
                     .onTapGesture {
                         selectedWorktree = worktree
@@ -103,6 +105,7 @@ struct WorktreeListView: View {
     WorktreeListView(
         repository: Repository(),
         selectedWorktree: .constant(nil),
-        repositoryManager: RepositoryManager(viewContext: PersistenceController.preview.container.viewContext)
+        repositoryManager: RepositoryManager(viewContext: PersistenceController.preview.container.viewContext),
+        tabStateManager: WorktreeTabStateManager()
     )
 }

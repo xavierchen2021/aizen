@@ -10,9 +10,11 @@ import CoreData
 
 struct FileBrowserSessionView: View {
     @StateObject private var viewModel: FileBrowserViewModel
+    @Binding private var fileToOpenFromSearch: String?
 
-    init(worktree: Worktree, context: NSManagedObjectContext) {
+    init(worktree: Worktree, context: NSManagedObjectContext, fileToOpenFromSearch: Binding<String?>) {
         _viewModel = StateObject(wrappedValue: FileBrowserViewModel(worktree: worktree, context: context))
+        _fileToOpenFromSearch = fileToOpenFromSearch
     }
 
     var body: some View {
@@ -60,6 +62,21 @@ struct FileBrowserSessionView: View {
             // Right: File content viewer (70%)
             FileContentTabView(viewModel: viewModel)
                 .frame(minWidth: 300)
+        }
+        .onAppear {
+            openPendingFileIfNeeded()
+        }
+        .onChange(of: fileToOpenFromSearch) { _ in
+            openPendingFileIfNeeded()
+        }
+    }
+
+    private func openPendingFileIfNeeded() {
+        guard let path = fileToOpenFromSearch else { return }
+
+        Task { @MainActor in
+            await viewModel.openFile(path: path)
+            fileToOpenFromSearch = nil
         }
     }
 }

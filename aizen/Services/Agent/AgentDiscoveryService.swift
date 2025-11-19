@@ -14,7 +14,8 @@ extension AgentRegistry {
         "claude": ["claude-code-acp"],
         "codex": ["codex-acp", "codex"],
         "gemini": ["gemini"],
-        "kimi": ["kimi"]
+        "kimi": ["kimi"],
+        "opencode": ["opencode"]
     ]
 
     // MARK: - Discovery

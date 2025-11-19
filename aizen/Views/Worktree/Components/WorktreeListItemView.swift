@@ -13,6 +13,7 @@ struct WorktreeListItemView: View {
     @ObservedObject var repositoryManager: RepositoryManager
     let allWorktrees: [Worktree]
     @Binding var selectedWorktree: Worktree?
+    @ObservedObject var tabStateManager: WorktreeTabStateManager
 
     @State private var showingDetails = false
     @State private var showingDeleteConfirmation = false
@@ -60,6 +61,11 @@ struct WorktreeListItemView: View {
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
+
+                ActiveTabIndicatorView(
+                    worktree: worktree,
+                    tabStateManager: tabStateManager
+                )
             }
 
             Spacer()

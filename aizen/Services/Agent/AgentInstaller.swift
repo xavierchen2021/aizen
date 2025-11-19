@@ -76,11 +76,13 @@ actor AgentInstaller {
         case "claude":
             return (agentDir as NSString).appendingPathComponent("node_modules/.bin/claude-code-acp")
         case "codex":
-            return (agentDir as NSString).appendingPathComponent("codex-acp")
+            return (agentDir as NSString).appendingPathComponent("node_modules/.bin/codex-acp")
         case "gemini":
             return (agentDir as NSString).appendingPathComponent("node_modules/.bin/gemini")
         case "kimi":
             return (agentDir as NSString).appendingPathComponent("kimi")
+        case "opencode":
+            return (agentDir as NSString).appendingPathComponent("node_modules/.bin/opencode")
         default:
             return ""
         }

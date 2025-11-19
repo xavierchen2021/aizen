@@ -13,6 +13,7 @@ import Foundation
 enum KeyCode {
     static let tab: UInt16 = 48
     static let escape: UInt16 = 53
+    static let p: UInt16 = 35
 }
 
 // MARK: - Keyboard Shortcut Manager
@@ -58,7 +59,18 @@ class KeyboardShortcutManager {
 
     private func setupEventMonitor() {
         eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self = self, self.isChatViewActive else {
+            guard let self = self else {
+                return event
+            }
+
+            // Command+P: File search (global shortcut)
+            if event.keyCode == KeyCode.p && event.modifierFlags.contains(.command) {
+                NotificationCenter.default.post(name: .fileSearchShortcut, object: nil)
+                return nil
+            }
+
+            // Chat view specific shortcuts
+            guard self.isChatViewActive else {
                 return event
             }
 

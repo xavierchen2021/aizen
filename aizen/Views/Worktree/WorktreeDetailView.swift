@@ -18,8 +18,8 @@ struct WorktreeDetailView: View {
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.aizen", category: "WorktreeDetailView")
 
     @StateObject private var viewModel: WorktreeViewModel
+    @ObservedObject var tabStateManager: WorktreeTabStateManager
 
-    @AppStorage("worktreeTabStates") private var worktreeTabStatesData: String = "{}"
     @AppStorage("showChatTab") private var showChatTab = true
     @AppStorage("showTerminalTab") private var showTerminalTab = true
     @AppStorage("showFilesTab") private var showFilesTab = true
@@ -32,10 +32,13 @@ struct WorktreeDetailView: View {
     @State private var sidebarWidth: CGFloat = 350
     @StateObject private var gitRepositoryService: GitRepositoryService
     @State private var gitIndexWatcher: GitIndexWatcher?
+    @State private var fileSearchWindowController: FileSearchWindowController?
+    @State private var fileToOpenFromSearch: String?
 
-    init(worktree: Worktree, repositoryManager: RepositoryManager, onWorktreeDeleted: ((Worktree?) -> Void)? = nil) {
+    init(worktree: Worktree, repositoryManager: RepositoryManager, tabStateManager: WorktreeTabStateManager, onWorktreeDeleted: ((Worktree?) -> Void)? = nil) {
         self.worktree = worktree
         self.repositoryManager = repositoryManager
+        self.tabStateManager = tabStateManager
         self.onWorktreeDeleted = onWorktreeDeleted
         _viewModel = StateObject(wrappedValue: WorktreeViewModel(worktree: worktree, repositoryManager: repositoryManager))
         _gitRepositoryService = StateObject(wrappedValue: GitRepositoryService(worktreePath: worktree.path ?? ""))
@@ -57,14 +60,6 @@ struct WorktreeDetailView: View {
             worktree: worktree,
             viewModel: viewModel,
             logger: logger
-        )
-    }
-
-    private var tabStateManager: WorktreeTabStateManager {
-        WorktreeTabStateManager(
-            worktree: worktree,
-            tabStatesData: $worktreeTabStatesData,
-            selectedTab: $selectedTab
         )
     }
 
@@ -119,7 +114,10 @@ struct WorktreeDetailView: View {
                         repositoryManager: repositoryManager
                     )
                 } else if selectedTab == "files" {
-                    FileTabView(worktree: worktree)
+                    FileTabView(
+                        worktree: worktree,
+                        fileToOpenFromSearch: $fileToOpenFromSearch
+                    )
                 } else if selectedTab == "browser" {
                     BrowserTabView(
                         worktree: worktree,
@@ -127,6 +125,27 @@ struct WorktreeDetailView: View {
                     )
                 }
             }
+        }
+    }
+
+    @ToolbarContentBuilder
+    var tabPickerToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .automatic) {
+            Picker(String(localized: "worktree.session.tab"), selection: $selectedTab) {
+                if showChatTab {
+                    Label(String(localized: "worktree.session.chat"), systemImage: "message").tag("chat")
+                }
+                if showTerminalTab {
+                    Label(String(localized: "worktree.session.terminal"), systemImage: "terminal").tag("terminal")
+                }
+                if showFilesTab {
+                    Label(String(localized: "worktree.session.files"), systemImage: "folder").tag("files")
+                }
+                if showBrowserTab {
+                    Label(String(localized: "worktree.session.browser"), systemImage: "globe").tag("browser")
+                }
+            }
+            .pickerStyle(.segmented)
         }
     }
 
@@ -230,43 +249,86 @@ struct WorktreeDetailView: View {
         }
     }
 
+    private func openFile(_ filePath: String) {
+        // Remember the file path so the files tab can open it
+        fileToOpenFromSearch = filePath
+
+        // Switch to files tab
+        selectedTab = "files"
+    }
+
+    @ViewBuilder
+    private var gitSidebarInset: some View {
+        if showingGitSidebar {
+            GitSidebarView(
+                worktreePath: worktree.path ?? "",
+                repository: worktree.repository!,
+                repositoryManager: repositoryManager,
+                onClose: { showingGitSidebar = false },
+                gitStatus: gitRepositoryService.currentStatus,
+                isOperationPending: gitRepositoryService.isOperationPending,
+                selectedDiffFile: viewModel.selectedDiffFile,
+                onStageFile: gitOperations.stageFile,
+                onUnstageFile: gitOperations.unstageFile,
+                onStageAll: gitOperations.stageAll,
+                onUnstageAll: gitOperations.unstageAll,
+                onCommit: gitOperations.commit,
+                onAmendCommit: gitOperations.amendCommit,
+                onCommitWithSignoff: gitOperations.commitWithSignoff,
+                onSwitchBranch: gitOperations.switchBranch,
+                onCreateBranch: gitOperations.createBranch,
+                onFetch: gitOperations.fetch,
+                onPull: gitOperations.pull,
+                onPush: gitOperations.push,
+                onFileClick: { file in
+                    viewModel.selectFileForDiff(file)
+                }
+            )
+            .frame(width: sidebarWidth)
+            .id(gitRepositoryService.currentStatus.id)
+            .transition(.move(edge: .trailing))
+        }
+    }
+
+    private func showFileSearch() {
+        guard let worktreePath = worktree.path else { return }
+
+        let windowController = FileSearchWindowController(
+            worktreePath: worktreePath,
+            onFileSelected: { filePath in
+                self.openFile(filePath)
+            }
+        )
+
+        fileSearchWindowController = windowController
+        windowController.showWindow(nil)
+    }
+
+    @ViewBuilder
+    private var mainContentWithSidebars: some View {
+        let content = contentView
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .safeAreaInset(edge: .trailing, spacing: 0) {
+                gitSidebarInset
+            }
+
+        content
+            .animation(.easeInOut(duration: 0.2), value: showingGitSidebar)
+            .animation(.easeInOut(duration: 0.2), value: viewModel.selectedDiffFile)
+            .onReceive(NotificationCenter.default.publisher(for: .fileSearchShortcut)) { _ in
+                showFileSearch()
+            }
+    }
+
     var body: some View {
         NavigationStack {
-            contentView
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .safeAreaInset(edge: .trailing, spacing: 0) {
-                    if showingGitSidebar {
-                        GitSidebarView(
-                            worktreePath: worktree.path ?? "",
-                            repository: worktree.repository!,
-                            repositoryManager: repositoryManager,
-                            onClose: { showingGitSidebar = false },
-                            gitStatus: gitRepositoryService.currentStatus,
-                            isOperationPending: gitRepositoryService.isOperationPending,
-                            selectedDiffFile: viewModel.selectedDiffFile,
-                            onStageFile: gitOperations.stageFile,
-                            onUnstageFile: gitOperations.unstageFile,
-                            onStageAll: gitOperations.stageAll,
-                            onUnstageAll: gitOperations.unstageAll,
-                            onCommit: gitOperations.commit,
-                            onAmendCommit: gitOperations.amendCommit,
-                            onCommitWithSignoff: gitOperations.commitWithSignoff,
-                            onSwitchBranch: gitOperations.switchBranch,
-                            onCreateBranch: gitOperations.createBranch,
-                            onFetch: gitOperations.fetch,
-                            onPull: gitOperations.pull,
-                            onPush: gitOperations.push,
-                            onFileClick: { file in
-                                viewModel.selectFileForDiff(file)
-                            }
-                        )
-                        .frame(width: sidebarWidth)
-                        .id(gitRepositoryService.currentStatus.id)
-                        .transition(.move(edge: .trailing))
-                    }
-                }
-                .animation(.easeInOut(duration: 0.2), value: showingGitSidebar)
-                .animation(.easeInOut(duration: 0.2), value: viewModel.selectedDiffFile)
+            navigationContent
+        }
+    }
+
+    @ViewBuilder
+    private var contentWithBasicModifiers: some View {
+        mainContentWithSidebars
             .navigationTitle(worktree.branch ?? String(localized: "worktree.session.worktree"))
             .toolbarBackground(.visible, for: .windowToolbar)
             .toast()
@@ -274,24 +336,7 @@ struct WorktreeDetailView: View {
                 validateSelectedTab()
             }
             .toolbar {
-                ToolbarItem(placement: .automatic) {
-                    Picker(String(localized: "worktree.session.tab"), selection: $selectedTab) {
-                        if showChatTab {
-                            Label(String(localized: "worktree.session.chat"), systemImage: "message").tag("chat")
-                        }
-                        if showTerminalTab {
-                            Label(String(localized: "worktree.session.terminal"), systemImage: "terminal").tag("terminal")
-                        }
-                        if showFilesTab {
-                            Label(String(localized: "worktree.session.files"), systemImage: "folder").tag("files")
-                        }
-                        if showBrowserTab {
-                            Label(String(localized: "worktree.session.browser"), systemImage: "globe").tag("browser")
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                }
-
+                tabPickerToolbarItem
 
                 if shouldShowSessionToolbar {
                     sessionToolbarItems
@@ -309,16 +354,47 @@ struct WorktreeDetailView: View {
             }
             .task(id: worktree.id) {
                 await setupGitMonitoring()
-                tabStateManager.loadTabState()
+                loadTabState()
                 validateSelectedTab()
             }
-            .task(id: selectedTab) {
-                tabStateManager.saveTabState()
+    }
+
+    @ViewBuilder
+    private var navigationContent: some View {
+        contentWithBasicModifiers
+            .onChange(of: selectedTab) { _ in
+                saveTabState()
+            }
+            .onChange(of: viewModel.selectedChatSessionId) { newValue in
+                guard let worktreeId = worktree.id else { return }
+                tabStateManager.saveSessionId(newValue, for: "chat", worktreeId: worktreeId)
+            }
+            .onChange(of: viewModel.selectedTerminalSessionId) { newValue in
+                guard let worktreeId = worktree.id else { return }
+                tabStateManager.saveSessionId(newValue, for: "terminal", worktreeId: worktreeId)
+            }
+            .onChange(of: viewModel.selectedBrowserSessionId) { newValue in
+                guard let worktreeId = worktree.id else { return }
+                tabStateManager.saveSessionId(newValue, for: "browser", worktreeId: worktreeId)
+            }
+            .onChange(of: viewModel.selectedFileSessionId) { newValue in
+                guard let worktreeId = worktree.id else { return }
+                tabStateManager.saveSessionId(newValue, for: "files", worktreeId: worktreeId)
             }
             .onDisappear {
                 gitIndexWatcher?.stopWatching()
             }
-        }
+    }
+
+    private func loadTabState() {
+        guard let worktreeId = worktree.id else { return }
+        let state = tabStateManager.getState(for: worktreeId)
+        selectedTab = state.viewType
+    }
+
+    private func saveTabState() {
+        guard let worktreeId = worktree.id else { return }
+        tabStateManager.saveViewType(selectedTab, for: worktreeId)
     }
 
     private func setupGitMonitoring() async {
@@ -358,6 +434,7 @@ struct WorktreeDetailView: View {
 #Preview {
     WorktreeDetailView(
         worktree: Worktree(),
-        repositoryManager: RepositoryManager(viewContext: PersistenceController.preview.container.viewContext)
+        repositoryManager: RepositoryManager(viewContext: PersistenceController.preview.container.viewContext),
+        tabStateManager: WorktreeTabStateManager()
     )
 }

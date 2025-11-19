@@ -28,11 +28,14 @@ actor BinaryAgentInstaller {
         // Download
         let (tempFileURL, _) = try await urlSession.download(from: downloadURL)
 
-        // Determine if it's a tarball
+        // Determine archive type
         let isTarball = urlString.hasSuffix(".tar.gz") || urlString.hasSuffix(".tgz")
+        let isZip = urlString.hasSuffix(".zip")
 
         if isTarball {
             try await extractTarball(from: tempFileURL, url: urlString, agentId: agentId, targetDir: targetDir)
+        } else if isZip {
+            try await extractZip(from: tempFileURL, url: urlString, agentId: agentId, targetDir: targetDir)
         } else {
             try installDirectBinary(from: tempFileURL, agentId: agentId, targetDir: targetDir)
         }
@@ -75,6 +78,43 @@ actor BinaryAgentInstaller {
         }
     }
 
+    // MARK: - Zip Extraction
+
+    private func extractZip(from tempFileURL: URL, url: String, agentId: String, targetDir: String) async throws {
+        let filename = (url as NSString).lastPathComponent
+        let zipPath = (targetDir as NSString).appendingPathComponent(filename)
+        try fileManager.copyItem(at: tempFileURL, to: URL(fileURLWithPath: zipPath))
+
+        // Unzip
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
+        process.arguments = ["-o", filename, "-d", targetDir]
+        process.currentDirectoryURL = URL(fileURLWithPath: targetDir)
+
+        let errorPipe = Pipe()
+        process.standardError = errorPipe
+
+        try process.run()
+        process.waitUntilExit()
+
+        // Clean up zip file
+        try? fileManager.removeItem(atPath: zipPath)
+
+        if process.terminationStatus != 0 {
+            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            let errorMessage = String(data: errorData, encoding: .utf8) ?? "Unknown error"
+            throw AgentInstallError.installFailed(message: "Extraction failed: \(errorMessage)")
+        }
+
+        // Find and make executable
+        let executablePath = findExecutableInDirectory(targetDir, preferredName: agentId)
+        if let execPath = executablePath {
+            let attributes = [FileAttributeKey.posixPermissions: 0o755]
+            try fileManager.setAttributes(attributes, ofItemAtPath: execPath)
+            removeQuarantineAttribute(from: execPath)
+        }
+    }
+
     // MARK: - Direct Binary
 
     private func installDirectBinary(from tempFileURL: URL, agentId: String, targetDir: String) throws {
@@ -94,10 +134,25 @@ actor BinaryAgentInstaller {
             return nil
         }
 
-        // Look for preferred name first
-        let preferredPath = (directory as NSString).appendingPathComponent(preferredName)
-        if fileManager.fileExists(atPath: preferredPath) {
-            return preferredPath
+        // Build list of names to check in priority order
+        var namesToCheck = [preferredName]
+
+        // Add agent-specific variations
+        switch preferredName {
+        case "codex":
+            namesToCheck.append("codex-acp")
+        case "opencode":
+            namesToCheck.append("opencode-acp")
+        default:
+            break
+        }
+
+        // Look for preferred names first
+        for name in namesToCheck {
+            let path = (directory as NSString).appendingPathComponent(name)
+            if fileManager.fileExists(atPath: path) {
+                return path
+            }
         }
 
         // Look for any executable file

@@ -10,11 +10,16 @@ import CoreData
 
 struct FileTabView: View {
     let worktree: Worktree
+    @Binding var fileToOpenFromSearch: String?
     @Environment(\.managedObjectContext) private var viewContext
 
     var body: some View {
         if worktree.path != nil {
-            FileBrowserSessionView(worktree: worktree, context: viewContext)
+            FileBrowserSessionView(
+                worktree: worktree,
+                context: viewContext,
+                fileToOpenFromSearch: $fileToOpenFromSearch
+            )
         } else {
             VStack {
                 Image(systemName: "exclamationmark.triangle")

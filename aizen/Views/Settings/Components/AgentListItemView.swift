@@ -354,26 +354,21 @@ struct AgentListItemView: View {
         }
 
         do {
-            // Try discovery first
-            let discovered = await AgentRegistry.shared.discoverAgent(named: metadata.id)
-            if let discoveredPath = discovered {
-                await MainActor.run {
-                    metadata.executablePath = discoveredPath
-                }
-                await AgentRegistry.shared.updateAgent(metadata)
-            } else {
-                // Install
-                try await AgentInstaller.shared.installAgent(metadata)
-                let path = AgentRegistry.shared.getAgentPath(for: metadata.id)
-                await MainActor.run {
-                    if let execPath = path {
-                        metadata.executablePath = execPath
-                    }
+            // Install to managed .aizen/agents directory
+            try await AgentInstaller.shared.installAgent(metadata)
+            let path = AgentRegistry.shared.getAgentPath(for: metadata.id)
+            await MainActor.run {
+                if let execPath = path {
+                    metadata.executablePath = execPath
                 }
             }
 
-            // Refresh validation state
+            // Refresh validation and update state
             await validateAgent()
+            let canUpdateState = await AgentInstaller.shared.canUpdate(metadata)
+            await MainActor.run {
+                canUpdate = canUpdateState
+            }
         } catch {
             await MainActor.run {
                 testResult = "Install failed: \(error.localizedDescription)"
