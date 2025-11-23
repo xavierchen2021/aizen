@@ -26,7 +26,9 @@ struct SessionTabButton<Content: View>: View {
     var body: some View {
         Button(action: action) {
             content
-                .padding(6)
+                .padding(.leading, 6)
+                .padding(.trailing, 12)
+                .padding(.vertical, 6)
                 .background(
                     isSelected ?
                     Color(nsColor: .separatorColor) :
@@ -51,63 +53,329 @@ struct SessionTabsScrollView: View {
     @Binding var selectedTerminalSessionId: UUID?
     let onCloseChatSession: (ChatSession) -> Void
     let onCloseTerminalSession: (TerminalSession) -> Void
+    let onCreateChatSession: () -> Void
+    let onCreateTerminalSession: () -> Void
+
+    @State private var scrollViewProxy: ScrollViewProxy?
 
     var body: some View {
-        ZStack(alignment: .trailing) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
-                    if selectedTab == "chat" && !chatSessions.isEmpty {
-                        ForEach(chatSessions) { session in
-                            SessionTabButton(
-                                isSelected: selectedChatSessionId == session.id,
-                                action: { selectedChatSessionId = session.id }
-                            ) {
-                                HStack(spacing: 6) {
-                                    AgentIconView(agent: session.agentName ?? "claude", size: 14)
+        HStack(spacing: 4) {
+            // Navigation arrows group
+            HStack(spacing: 4) {
+                NavigationArrowButton(
+                    icon: "chevron.left",
+                    action: scrollToPrevious,
+                    help: "Previous tab"
+                )
 
-                                    Text(session.title ?? session.agentName?.capitalized ?? String(localized: "worktree.session.chat"))
-                                        .font(.callout)
+                NavigationArrowButton(
+                    icon: "chevron.right",
+                    action: scrollToNext,
+                    help: "Next tab"
+                )
+            }
+            .padding(.leading, 8)
 
-                                    Button {
-                                        onCloseChatSession(session)
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .font(.system(size: 10))
-                                            .foregroundStyle(.secondary)
+            // Tabs ScrollView with horizontal scroll on vertical wheel
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 4) {
+                        if selectedTab == "chat" && !chatSessions.isEmpty {
+                            ForEach(Array(chatSessions.enumerated()), id: \.element.id) { index, session in
+                                chatTabView(session: session)
+                                    .id(session.id)
+                                    .contextMenu {
+                                        chatContextMenu(session: session, index: index)
                                     }
-                                    .buttonStyle(.borderless)
-                                }
                             }
-                        }
-                    } else if selectedTab == "terminal" && !terminalSessions.isEmpty {
-                        ForEach(terminalSessions) { session in
-                            SessionTabButton(
-                                isSelected: selectedTerminalSessionId == session.id,
-                                action: { selectedTerminalSessionId = session.id }
-                            ) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "terminal")
-                                        .font(.system(size: 12))
-                                    Text(session.title ?? String(localized: "worktree.session.terminal"))
-                                        .font(.callout)
-
-                                    Button {
-                                        onCloseTerminalSession(session)
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .font(.system(size: 10))
-                                            .foregroundStyle(.secondary)
+                        } else if selectedTab == "terminal" && !terminalSessions.isEmpty {
+                            ForEach(Array(terminalSessions.enumerated()), id: \.element.id) { index, session in
+                                terminalTabView(session: session)
+                                    .id(session.id)
+                                    .contextMenu {
+                                        terminalContextMenu(session: session, index: index)
                                     }
-                                    .buttonStyle(.borderless)
-                                }
                             }
                         }
                     }
+                    .padding(.horizontal, 6)
                 }
-                .padding(.horizontal, 6)
+                .frame(maxWidth: 600, maxHeight: 36)
+                .onAppear {
+                    scrollViewProxy = proxy
+                }
+                .background(WheelScrollHandler { _ in })
             }
-            .frame(maxWidth: 600)
+
+            // New tab button - fixed position outside scroll view
+            NewTabButton(
+                selectedTab: selectedTab,
+                onCreateChatSession: onCreateChatSession,
+                onCreateTerminalSession: onCreateTerminalSession
+            )
+            .padding(.trailing, 8)
         }
-        .frame(maxWidth: 600)
+    }
+
+    // MARK: - Chat Tab View
+
+    @ViewBuilder
+    private func chatTabView(session: ChatSession) -> some View {
+        SessionTabButton(
+            isSelected: selectedChatSessionId == session.id,
+            action: { selectedChatSessionId = session.id }
+        ) {
+            HStack(spacing: 6) {
+                Button {
+                    onCloseChatSession(session)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+
+                AgentIconView(agent: session.agentName ?? "claude", size: 14)
+
+                Text(session.title ?? session.agentName?.capitalized ?? String(localized: "worktree.session.chat"))
+                    .font(.callout)
+            }
+        }
+    }
+
+    // MARK: - Terminal Tab View
+
+    @ViewBuilder
+    private func terminalTabView(session: TerminalSession) -> some View {
+        SessionTabButton(
+            isSelected: selectedTerminalSessionId == session.id,
+            action: { selectedTerminalSessionId = session.id }
+        ) {
+            HStack(spacing: 6) {
+                Button {
+                    onCloseTerminalSession(session)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+
+                Image(systemName: "terminal")
+                    .font(.system(size: 12))
+
+                Text(session.title ?? String(localized: "worktree.session.terminal"))
+                    .font(.callout)
+            }
+        }
+    }
+
+    // MARK: - Context Menus
+
+    @ViewBuilder
+    private func chatContextMenu(session: ChatSession, index: Int) -> some View {
+        Button("Close Tab") {
+            onCloseChatSession(session)
+        }
+
+        if index > 0 {
+            Button("Close All to the Left") {
+                closeAllChatToLeft(index: index)
+            }
+        }
+
+        if index < chatSessions.count - 1 {
+            Button("Close All to the Right") {
+                closeAllChatToRight(index: index)
+            }
+        }
+
+        if chatSessions.count > 1 {
+            Button("Close Other Tabs") {
+                closeOtherChatTabs(session: session)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func terminalContextMenu(session: TerminalSession, index: Int) -> some View {
+        Button("Close Tab") {
+            onCloseTerminalSession(session)
+        }
+
+        if index > 0 {
+            Button("Close All to the Left") {
+                closeAllTerminalToLeft(index: index)
+            }
+        }
+
+        if index < terminalSessions.count - 1 {
+            Button("Close All to the Right") {
+                closeAllTerminalToRight(index: index)
+            }
+        }
+
+        if terminalSessions.count > 1 {
+            Button("Close Other Tabs") {
+                closeOtherTerminalTabs(session: session)
+            }
+        }
+    }
+
+    // MARK: - Context Menu Actions
+
+    private func closeAllChatToLeft(index: Int) {
+        for i in (0..<index).reversed() {
+            onCloseChatSession(chatSessions[i])
+        }
+    }
+
+    private func closeAllChatToRight(index: Int) {
+        for i in ((index + 1)..<chatSessions.count).reversed() {
+            onCloseChatSession(chatSessions[i])
+        }
+    }
+
+    private func closeOtherChatTabs(session: ChatSession) {
+        chatSessions.filter { $0.id != session.id }.forEach { onCloseChatSession($0) }
+    }
+
+    private func closeAllTerminalToLeft(index: Int) {
+        for i in (0..<index).reversed() {
+            onCloseTerminalSession(terminalSessions[i])
+        }
+    }
+
+    private func closeAllTerminalToRight(index: Int) {
+        for i in ((index + 1)..<terminalSessions.count).reversed() {
+            onCloseTerminalSession(terminalSessions[i])
+        }
+    }
+
+    private func closeOtherTerminalTabs(session: TerminalSession) {
+        terminalSessions.filter { $0.id != session.id }.forEach { onCloseTerminalSession($0) }
+    }
+
+    // MARK: - Scroll Navigation
+
+    private func scrollToPrevious() {
+        if selectedTab == "chat", let currentId = selectedChatSessionId,
+           let currentIndex = chatSessions.firstIndex(where: { $0.id == currentId }),
+           currentIndex > 0 {
+            let prevSession = chatSessions[currentIndex - 1]
+            selectedChatSessionId = prevSession.id
+            scrollViewProxy?.scrollTo(prevSession.id, anchor: .center)
+        } else if selectedTab == "terminal", let currentId = selectedTerminalSessionId,
+                  let currentIndex = terminalSessions.firstIndex(where: { $0.id == currentId }),
+                  currentIndex > 0 {
+            let prevSession = terminalSessions[currentIndex - 1]
+            selectedTerminalSessionId = prevSession.id
+            scrollViewProxy?.scrollTo(prevSession.id, anchor: .center)
+        }
+    }
+
+    private func scrollToNext() {
+        if selectedTab == "chat", let currentId = selectedChatSessionId,
+           let currentIndex = chatSessions.firstIndex(where: { $0.id == currentId }),
+           currentIndex < chatSessions.count - 1 {
+            let nextSession = chatSessions[currentIndex + 1]
+            selectedChatSessionId = nextSession.id
+            scrollViewProxy?.scrollTo(nextSession.id, anchor: .center)
+        } else if selectedTab == "terminal", let currentId = selectedTerminalSessionId,
+                  let currentIndex = terminalSessions.firstIndex(where: { $0.id == currentId }),
+                  currentIndex < terminalSessions.count - 1 {
+            let nextSession = terminalSessions[currentIndex + 1]
+            selectedTerminalSessionId = nextSession.id
+            scrollViewProxy?.scrollTo(nextSession.id, anchor: .center)
+        }
+    }
+
+}
+
+// MARK: - Navigation Arrow Button
+
+struct NavigationArrowButton: View {
+    let icon: String
+    let action: () -> Void
+    let help: String
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 11))
+                .frame(width: 24, height: 24)
+                .background(
+                    isHovering ? Color(nsColor: .separatorColor).opacity(0.5) : Color.clear,
+                    in: Circle()
+                )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovering = hovering
+        }
+        .help(help)
+    }
+}
+
+// MARK: - New Tab Button
+
+struct NewTabButton: View {
+    let selectedTab: String
+    let onCreateChatSession: () -> Void
+    let onCreateTerminalSession: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button {
+            if selectedTab == "chat" {
+                onCreateChatSession()
+            } else {
+                onCreateTerminalSession()
+            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 11))
+                .frame(width: 24, height: 24)
+                .background(
+                    isHovering ? Color(nsColor: .separatorColor).opacity(0.5) : Color.clear,
+                    in: Circle()
+                )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovering = hovering
+        }
+        .help(selectedTab == "chat" ? String(localized: "worktree.session.newChat") : String(localized: "worktree.session.newTerminal"))
+    }
+}
+
+// MARK: - Wheel Scroll Handler
+
+private struct WheelScrollHandler: NSViewRepresentable {
+    let onScroll: (CGFloat) -> Void
+
+    func makeNSView(context: Context) -> WheelScrollView {
+        let view = WheelScrollView()
+        view.onScroll = onScroll
+        return view
+    }
+
+    func updateNSView(_ nsView: WheelScrollView, context: Context) {
+        nsView.onScroll = onScroll
+    }
+
+    class WheelScrollView: NSView {
+        var onScroll: ((CGFloat) -> Void)?
+
+        override func scrollWheel(with event: NSEvent) {
+            // Convert vertical scroll to horizontal
+            if abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX) {
+                onScroll?(event.scrollingDeltaY)
+            }
+            super.scrollWheel(with: event)
+        }
     }
 }

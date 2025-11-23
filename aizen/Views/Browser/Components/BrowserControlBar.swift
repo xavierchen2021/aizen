@@ -89,7 +89,8 @@ struct BrowserControlBar: View {
                 .contentShape(Rectangle())
         }
         .disabled(disabled)
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
+        .background(Color.clear)
         .help(String(localized: help))
     }
 
