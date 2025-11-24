@@ -13,6 +13,8 @@ struct TerminalSettingsView: View {
     @Binding var fontName: String
     @Binding var fontSize: Double
     @AppStorage("terminalThemeName") private var themeName = "Catppuccin Mocha"
+    @AppStorage("terminalNotificationsEnabled") private var terminalNotificationsEnabled = true
+    @AppStorage("terminalProgressEnabled") private var terminalProgressEnabled = true
 
     @State private var availableFonts: [String] = []
     @State private var themeNames: [String] = []
@@ -79,6 +81,11 @@ struct TerminalSettingsView: View {
                     }
                 }
                 .disabled(themeNames.isEmpty)
+            }
+
+            Section("Terminal Behavior") {
+                Toggle("Enable terminal notifications", isOn: $terminalNotificationsEnabled)
+                Toggle("Show progress overlays", isOn: $terminalProgressEnabled)
             }
         }
         .formStyle(.grouped)

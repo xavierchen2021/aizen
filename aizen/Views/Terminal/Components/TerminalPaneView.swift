@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 // MARK: - Terminal Pane View
 
@@ -17,24 +18,57 @@ struct TerminalPaneView: View {
     let sessionManager: TerminalSessionManager
     let onFocus: () -> Void
     let onProcessExit: () -> Void
+    let onTitleChange: (String) -> Void
 
     @State private var shouldFocus: Bool = false
     @State private var focusVersion: Int = 0  // Increment to force updateNSView
     @State private var terminalView: GhosttyTerminalView?  // Store reference to resign directly
+    @State private var isLoading: Bool = false
+    @State private var progressState: GhosttyProgressState = .remove
+    @State private var progressValue: Int? = nil
+
+    @AppStorage("terminalNotificationsEnabled") private var notificationsEnabled = true
+    @AppStorage("terminalProgressEnabled") private var progressEnabled = true
 
     var body: some View {
         GeometryReader { geo in
-            TerminalViewWrapper(
-                worktree: worktree,
-                session: session,
-                paneId: paneId,
-                sessionManager: sessionManager,
-                onProcessExit: onProcessExit,
-                shouldFocus: shouldFocus,  // Pass value directly, not binding
-                isFocused: isFocused,      // Pass focused state to manage resignation
-                focusVersion: focusVersion, // Version counter to force updateNSView
-                size: geo.size
-            )
+            ZStack {
+                TerminalViewWrapper(
+                    worktree: worktree,
+                    session: session,
+                    paneId: paneId,
+                    sessionManager: sessionManager,
+                    onProcessExit: {
+                        if notificationsEnabled && (!isFocused || !NSApp.isActive) {
+                            TerminalNotificationManager.shared.notify(
+                                title: "Terminal exited",
+                                body: session.title ?? "Shell process ended"
+                            )
+                        }
+                        onProcessExit()
+                    },
+                    onReady: { },
+                    onTitleChange: onTitleChange,
+                    onProgress: { state, value in
+                        progressState = state
+                        progressValue = value
+                        if state == .remove {
+                            isLoading = false
+                        }
+                    },
+                    shouldFocus: shouldFocus,  // Pass value directly, not binding
+                    isFocused: isFocused,      // Pass focused state to manage resignation
+                    focusVersion: focusVersion, // Version counter to force updateNSView
+                    size: geo.size
+                )
+
+                if progressEnabled && progressState != .remove && progressState != .unknown {
+                    progressOverlay
+                        .transition(.opacity)
+                        .padding(.horizontal, 0)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                }
+            }
         }
         .ignoresSafeArea(.container, edges: .bottom)
         .opacity(isFocused ? 1.0 : 0.6)
@@ -63,5 +97,29 @@ struct TerminalPaneView: View {
                 }
             }
         }
+    }
+
+    private var progressOverlay: some View {
+        ZStack(alignment: .topLeading) {
+            // Background track
+            Rectangle()
+                .fill(Color.primary.opacity(0.12))
+                .frame(height: 2)
+            // Determinate bar
+            if progressState == .set, let value = progressValue {
+                GeometryReader { geo in
+                    Rectangle()
+                        .fill(Color.accentColor)
+                        .frame(width: geo.size.width * CGFloat(value) / 100.0, height: 2)
+                        .animation(.easeOut(duration: 0.12), value: value)
+                }
+                .frame(height: 2)
+            } else if progressState == .indeterminate || progressState == .pause || progressState == .error {
+                // Indeterminate "ping-pong" bar
+                IndeterminateBar(color: progressState == .error ? .red : .accentColor)
+                    .frame(height: 2)
+            }
+        }
+        .padding(.horizontal, 0.5)
     }
 }

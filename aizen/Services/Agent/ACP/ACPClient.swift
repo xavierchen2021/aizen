@@ -342,7 +342,7 @@ actor ACPClient {
                 await handleResponse(response)
 
             case .notification(let notification):
-                logger.debug("↪︎ Notification \(notification.method, privacy: .public)")
+                // Notification logs were too verbose; keep only decode failures
                 notificationContinuation.yield(notification)
 
             case .request(let request):

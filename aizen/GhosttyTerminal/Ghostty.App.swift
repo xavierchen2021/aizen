@@ -298,6 +298,15 @@ extension Ghostty {
                 Ghostty.logger.debug("Prompt title action received")
                 return true
 
+            case GHOSTTY_ACTION_PROGRESS_REPORT:
+                let report = action.action.progress_report
+                let state = GhosttyProgressState(cState: report.state)
+                let value = report.progress >= 0 ? Int(report.progress) : nil
+                DispatchQueue.main.async {
+                    terminalView?.onProgressReport?(state, value)
+                }
+                return true
+
             default:
                 // Log unhandled actions
                 Ghostty.logger.debug("Action received: \(action.tag.rawValue) on target: \(target.tag.rawValue)")

@@ -49,7 +49,7 @@ struct ChatSessionView: View {
                     ChatMessageList(
                         timelineItems: viewModel.timelineItems,
                         isProcessing: viewModel.isProcessing,
-                        selectedAgent: viewModel.selectedAgent,
+                        selectedAgent: viewModel.selectedAgentDisplayName,
                         currentThought: viewModel.currentAgentSession?.currentThought,
                         onScrollProxyReady: { proxy in
                             viewModel.scrollProxy = proxy

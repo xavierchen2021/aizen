@@ -28,18 +28,18 @@ struct ToolDetailsSheet: View {
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 16)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
 
             Divider()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     ForEach(toolCalls) { toolCall in
                         toolCallDetailView(toolCall)
                     }
                 }
-                .padding(16)
+                .padding(12)
             }
         }
         .background(.ultraThinMaterial)
@@ -48,7 +48,7 @@ struct ToolDetailsSheet: View {
 
     @ViewBuilder
     private func toolCallDetailView(_ toolCall: ToolCall) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             // Header
             HStack(spacing: 10) {
                 Circle()
@@ -97,16 +97,16 @@ struct ToolDetailsSheet: View {
 
             if !toolCall.content.isEmpty {
                 SectionHeader(title: "Text Output")
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
                     ForEach(Array(toolCall.content.enumerated()), id: \.offset) { _, block in
                         CompactContentBlockView(block: block)
                     }
                 }
             }
         }
-        .padding(12)
+        .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.controlBackgroundColor).opacity(0.35))
+        .background(Color(.controlBackgroundColor).opacity(0.25))
         .cornerRadius(8)
     }
 
@@ -261,13 +261,16 @@ private struct JsonBlockView: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxHeight: 200)
-        .padding(8)
+        .frame(maxHeight: 160)
+        .padding(6)
         .background(Color(nsColor: .textBackgroundColor))
         .cornerRadius(4)
+        .overlay(
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(Color.gray.opacity(0.12), lineWidth: 0.5)
+        )
     }
 }
-
 private func stringify(_ any: AnyCodable) -> String {
     // If the raw value is already a String, try to pretty-print if JSON
     if let str = any.value as? String {

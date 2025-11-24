@@ -41,7 +41,7 @@ struct ToolCallView: View {
                 Spacer(minLength: 6)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 6)
+            .padding(.vertical, 3)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -165,19 +165,17 @@ struct ToolCallView: View {
     // MARK: - Colors
 
     private var backgroundColor: Color {
-        Color(.controlBackgroundColor).opacity(0.3)
+        Color(.controlBackgroundColor).opacity(0.2)
     }
 
     private var borderColor: Color {
         Color.gray.opacity(0.2)
     }
 
-    // MARK: - Timestamp
-
-    private var formattedTimestamp: String? {
-        // Note: ToolCall doesn't include timestamp in current types
-        // This is a placeholder for future enhancement
-        nil
+    private var displayTitle: String {
+        let trimmed = toolCall.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return trimmed }
+        return toolCall.kind.rawValue
     }
 
 }

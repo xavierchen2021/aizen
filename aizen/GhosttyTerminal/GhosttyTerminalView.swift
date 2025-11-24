@@ -32,6 +32,13 @@ class GhosttyTerminalView: NSView {
 
     /// Callback invoked when the terminal title changes
     var onTitleChange: ((String) -> Void)?
+    
+    /// Callback when the surface has produced its first layout/draw (used to hide loading UI)
+    var onReady: (() -> Void)?
+    
+    /// Callback for OSC 9;4 progress reports
+    var onProgressReport: ((GhosttyProgressState, Int?) -> Void)?
+    private var didSignalReady = false
 
     private static let logger = Logger(subsystem: "com.aizen.app", category: "GhosttyTerminal")
 
@@ -215,12 +222,16 @@ class GhosttyTerminalView: NSView {
 
     override func layout() {
         super.layout()
-        _ = renderingSetup.updateLayout(
+        let didUpdate = renderingSetup.updateLayout(
             view: self,
             metalLayer: layer as? CAMetalLayer,
             surface: surface?.unsafeCValue,
             lastSize: &lastSurfaceSize
         )
+        if didUpdate && !didSignalReady {
+            didSignalReady = true
+            onReady?()
+        }
     }
 
     // MARK: - Keyboard Input

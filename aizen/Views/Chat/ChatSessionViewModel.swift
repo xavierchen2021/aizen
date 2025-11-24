@@ -69,8 +69,17 @@ class ChatSessionViewModel: ObservableObject {
 
     // MARK: - Computed Properties
 
+    /// Internal agent identifier used for ACP calls
     var selectedAgent: String {
         session.agentName ?? "claude"
+    }
+
+    /// User-friendly agent name for UI (falls back to id)
+    var selectedAgentDisplayName: String {
+        if let meta = AgentRegistry.shared.getMetadata(for: selectedAgent) {
+            return meta.name
+        }
+        return selectedAgent
     }
 
     var isSessionReady: Bool {

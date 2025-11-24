@@ -53,6 +53,9 @@ struct TerminalViewWrapper: NSViewRepresentable {
     let paneId: String
     let sessionManager: TerminalSessionManager
     let onProcessExit: () -> Void
+    let onReady: () -> Void
+    let onTitleChange: (String) -> Void
+    let onProgress: (GhosttyProgressState, Int?) -> Void
     let shouldFocus: Bool  // Pass value directly to trigger updateNSView
     let isFocused: Bool    // Track if this pane should have focus
     let focusVersion: Int  // Version counter - forces updateNSView when changed
@@ -75,8 +78,12 @@ struct TerminalViewWrapper: NSViewRepresentable {
             context.coordinator.startMonitoring(terminal: existingTerminal)
 
             DispatchQueue.main.async {
+                existingTerminal.onProcessExit = onProcessExit
+                existingTerminal.onProgressReport = onProgress
+                existingTerminal.onTitleChange = onTitleChange
                 existingTerminal.needsLayout = true
                 existingTerminal.layoutSubtreeIfNeeded()
+                onReady()
             }
 
             return existingTerminal
@@ -99,6 +106,8 @@ struct TerminalViewWrapper: NSViewRepresentable {
             ghosttyApp: app,
             appWrapper: ghosttyApp
         )
+        terminalView.onReady = onReady
+        terminalView.onTitleChange = onTitleChange
 
         // Set process exit callback
         terminalView.onProcessExit = onProcessExit
@@ -107,27 +116,16 @@ struct TerminalViewWrapper: NSViewRepresentable {
         let sessionToUpdate = session
         let worktreeToUpdate = worktree
         let moc = session.managedObjectContext
-        terminalView.onTitleChange = { title in
-            Task { @MainActor in
-                sessionToUpdate.title = title
-
-                // Notify observers explicitly
-                sessionToUpdate.objectWillChange.send()
-                worktreeToUpdate.objectWillChange.send()
-
-                do {
-                    try moc?.save()
-                } catch {
-                    Logger.terminal.error("Failed to save terminal title change: \(error.localizedDescription)")
-                }
-            }
-        }
+        terminalView.onProgressReport = onProgress
 
         // Store terminal in manager for persistence
         sessionManager.setTerminal(terminalView, for: sessionId, paneId: paneId)
 
         // Start monitoring for process exit
         context.coordinator.startMonitoring(terminal: terminalView)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            onReady()
+        }
 
         return terminalView
     }
@@ -147,6 +145,13 @@ struct TerminalViewWrapper: NSViewRepresentable {
             window.makeFirstResponder(nsView)
         } else if !isFocused && nsView.window?.firstResponder == nsView {
             nsView.window?.makeFirstResponder(nil)
+        }
+
+        // Keep callbacks up to date if settings/state changed
+        if let terminalView = nsView as? GhosttyTerminalView {
+            terminalView.onProcessExit = onProcessExit
+            terminalView.onProgressReport = onProgress
+            terminalView.onTitleChange = onTitleChange
         }
     }
 }

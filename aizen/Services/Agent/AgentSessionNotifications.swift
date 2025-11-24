@@ -59,7 +59,7 @@ extension AgentSession {
 
                         updated = ToolCall(
                             toolCallId: updated.toolCallId,
-                            title: updateNotification.update.title ?? updated.title,
+                            title: normalizedTitle(updateNotification.update.title) ?? updated.title,
                             kind: updateNotification.update.kind ?? updated.kind,
                             status: updateNotification.update.status ?? updated.status,
                             content: mergedContent,
@@ -74,7 +74,7 @@ extension AgentSession {
                         // Create minimal placeholder so it shows up in UI even if some fields missing
                         let newCall = ToolCall(
                             toolCallId: toolCallId,
-                            title: updateNotification.update.title ?? "Tool call",
+                            title: normalizedTitle(updateNotification.update.title) ?? toolCallId,
                             kind: updateNotification.update.kind ?? .other,
                             status: updateNotification.update.status ?? .pending,
                             content: coalesceAdjacentTextBlocks(decodeContentBlocks(updateNotification.update.content)),
@@ -170,7 +170,7 @@ extension AgentSession {
                 let mergedContent = coalesceAdjacentTextBlocks(existingContent + newCall.content)
                 toolCalls[index] = ToolCall(
                     toolCallId: newCall.toolCallId,
-                    title: newCall.title.isEmpty ? toolCalls[index].title : newCall.title,
+                    title: cleanTitle(newCall.title).isEmpty ? toolCalls[index].title : cleanTitle(newCall.title),
                     kind: newCall.kind,
                     status: newCall.status,
                     content: mergedContent,
@@ -253,6 +253,15 @@ extension AgentSession {
             }
         }
         return result
+    }
+
+    private func normalizedTitle(_ raw: String?) -> String? {
+        guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else { return nil }
+        return trimmed
+    }
+
+    private func cleanTitle(_ title: String) -> String {
+        title.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Extract best-effort string from loosely-typed "text" payloads

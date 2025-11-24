@@ -50,12 +50,13 @@ struct MessageBubbleView: View {
 
     var body: some View {
         VStack(alignment: alignment, spacing: 4) {
-            if message.role == .agent, let name = agentName {
+            if message.role == .agent, let identifier = agentName {
                 HStack(spacing: 4) {
-                    AgentIconView(agent: name, size: 16)
-                    Text(name.capitalized)
+                    AgentIconView(agent: identifier, size: 16)
+                    Text(agentDisplayName.capitalized)
                         .font(.system(size: 13, weight: .bold))
-                }.padding(.vertical, 4)
+                }
+                .padding(.vertical, 4)
             }
 
             HStack {
@@ -80,7 +81,7 @@ struct MessageBubbleView: View {
                     if message.contentBlocks.count > 1 {
                         let attachmentBlocks = Array(message.contentBlocks.dropFirst())
                         HStack(spacing: 6) {
-                            ForEach(Array(attachmentBlocks.enumerated()), id: \.offset) { index, block in
+                            ForEach(Array(attachmentBlocks.enumerated()), id: \.offset) { _, block in
                                 AttachmentChipView(block: block)
                             }
                         }
@@ -141,6 +142,14 @@ struct MessageBubbleView: View {
             removal: .opacity
         ))
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: message.id)
+    }
+
+    private var agentDisplayName: String {
+        guard let agentName else { return "" }
+        if let meta = AgentRegistry.shared.getMetadata(for: agentName) {
+            return meta.name
+        }
+        return agentName
     }
 
     @ViewBuilder

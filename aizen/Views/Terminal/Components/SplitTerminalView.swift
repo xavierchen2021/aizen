@@ -19,6 +19,7 @@ struct SplitTerminalView: View {
     @State private var layout: SplitNode
     @State private var focusedPaneId: String
     @State private var layoutVersion: Int = 0  // Increment when layout changes to force refresh
+    @State private var paneTitles: [String: String] = [:]
     @State private var layoutSaveWorkItem: DispatchWorkItem?
     @State private var focusSaveWorkItem: DispatchWorkItem?
     private let logger = Logger.terminal
@@ -50,11 +51,13 @@ struct SplitTerminalView: View {
             // Persist focused pane changes separately
             .onChange(of: focusedPaneId) { _ in
                 scheduleFocusSave()
+                applyTitleForFocusedPane()
             }
             // Initial persistence to store default layout/pane
             .onAppear {
                 persistLayout()
                 persistFocus()
+                applyTitleForFocusedPane()
             }
             // Only set split actions for the currently selected/visible session
             .focusedSceneValue(\.terminalSplitActions, isSelected ? TerminalSplitActions(
@@ -78,8 +81,12 @@ struct SplitTerminalView: View {
                     paneId: paneId,
                     isFocused: focusedPaneId == paneId,
                     sessionManager: sessionManager,
-                    onFocus: { focusedPaneId = paneId },
-                    onProcessExit: { handleProcessExit(for: paneId) }
+                    onFocus: {
+                        focusedPaneId = paneId
+                        applyTitleForFocusedPane()
+                    },
+                    onProcessExit: { handleProcessExit(for: paneId) },
+                    onTitleChange: { title in handleTitleChange(for: paneId, title: title) }
                 )
                 .id("\(paneId)-\(layoutVersion)")  // Force refresh when layout changes
             )
@@ -229,5 +236,22 @@ struct SplitTerminalView: View {
         let id = paneId ?? focusedPaneId
         session.focusedPaneId = id
         saveContext()
+    }
+
+    // MARK: - Title Handling
+
+    private func handleTitleChange(for paneId: String, title: String) {
+        paneTitles[paneId] = title
+        if paneId == focusedPaneId {
+            session.title = title
+            saveContext()
+        }
+    }
+
+    private func applyTitleForFocusedPane() {
+        if let title = paneTitles[focusedPaneId] {
+            session.title = title
+            saveContext()
+        }
     }
 }
