@@ -300,9 +300,13 @@ struct NavigationArrowButton: View {
     let help: String
 
     @State private var isHovering = false
+    @State private var clickTrigger = 0
 
     var body: some View {
-        Button(action: action) {
+        let button = Button(action: {
+            clickTrigger += 1
+            action()
+        }) {
             Image(systemName: icon)
                 .font(.system(size: 11))
                 .frame(width: 24, height: 24)
@@ -316,6 +320,12 @@ struct NavigationArrowButton: View {
             isHovering = hovering
         }
         .help(help)
+        
+        if #available(macOS 14.0, *) {
+            button.symbolEffect(.bounce, value: clickTrigger)
+        } else {
+            button
+        }
     }
 }
 
@@ -327,9 +337,11 @@ struct NewTabButton: View {
     let onCreateTerminalSession: () -> Void
 
     @State private var isHovering = false
+    @State private var clickTrigger = 0
 
     var body: some View {
-        Button {
+        let button = Button {
+            clickTrigger += 1
             if selectedTab == "chat" {
                 onCreateChatSession()
             } else {
@@ -348,7 +360,13 @@ struct NewTabButton: View {
         .onHover { hovering in
             isHovering = hovering
         }
-        .help(selectedTab == "chat" ? String(localized: "worktree.session.newChat") : String(localized: "worktree.session.newTerminal"))
+        .help("New \(selectedTab == "chat" ? "Chat" : "Terminal") Session")
+        
+        if #available(macOS 14.0, *) {
+            button.symbolEffect(.bounce, value: clickTrigger)
+        } else {
+            button
+        }
     }
 }
 

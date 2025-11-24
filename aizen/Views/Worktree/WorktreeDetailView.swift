@@ -147,6 +147,7 @@ struct WorktreeDetailView: View {
                 }
             }
             .pickerStyle(.segmented)
+            .animation(.easeInOut(duration: 0.2), value: selectedTab)
         }
     }
 
@@ -219,23 +220,47 @@ struct WorktreeDetailView: View {
         if showGitStatus {
             ToolbarItem(placement: .automatic) {
                 if hasGitChanges {
-                    GitStatusView(
-                        additions: gitRepositoryService.currentStatus.additions,
-                        deletions: gitRepositoryService.currentStatus.deletions,
-                        untrackedFiles: gitRepositoryService.currentStatus.untrackedFiles.count
-                    )
+                    gitStatusView
                 }
             }
         }
 
         ToolbarItem(placement: .automatic) {
-            Button(action: {
+            gitSidebarButton
+        }
+    }
+    
+    @ViewBuilder
+    private var gitStatusView: some View {
+        let view = GitStatusView(
+            additions: gitRepositoryService.currentStatus.additions,
+            deletions: gitRepositoryService.currentStatus.deletions,
+            untrackedFiles: gitRepositoryService.currentStatus.untrackedFiles.count
+        )
+        
+        if #available(macOS 14.0, *) {
+            view.symbolEffect(.pulse, options: .repeating, value: hasGitChanges)
+        } else {
+            view
+        }
+    }
+    
+    @ViewBuilder
+    private var gitSidebarButton: some View {
+        let button = Button(action: {
+            withAnimation(.easeInOut(duration: 0.2)) {
                 showingGitSidebar.toggle()
-            }) {
-                Label("Git Changes", systemImage: "sidebar.right")
             }
-            .labelStyle(.iconOnly)
-            .help("Show Git Changes")
+        }) {
+            Label("Git Changes", systemImage: "sidebar.right")
+        }
+        .labelStyle(.iconOnly)
+        .help("Show Git Changes")
+        
+        if #available(macOS 14.0, *) {
+            button.symbolEffect(.bounce, value: showingGitSidebar)
+        } else {
+            button
         }
     }
 
