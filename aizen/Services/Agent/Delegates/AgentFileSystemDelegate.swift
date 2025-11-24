@@ -39,13 +39,13 @@ actor AgentFileSystemDelegate {
             filteredContent = content
         }
 
-        return ReadTextFileResponse(content: filteredContent, totalLines: lines.count)
+        return ReadTextFileResponse(content: filteredContent, totalLines: lines.count, _meta: nil)
     }
 
     /// Handle file write request from agent
     func handleFileWriteRequest(_ path: String, content: String, sessionId: String) async throws -> WriteTextFileResponse {
         let url = URL(fileURLWithPath: path)
         try content.write(to: url, atomically: true, encoding: .utf8)
-        return WriteTextFileResponse(success: true)
+        return WriteTextFileResponse(_meta: nil)
     }
 }

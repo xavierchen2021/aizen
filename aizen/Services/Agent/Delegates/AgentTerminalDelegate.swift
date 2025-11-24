@@ -122,7 +122,7 @@ actor AgentTerminalDelegate {
         }
 
         try process.run()
-        return CreateTerminalResponse(terminalId: terminalId)
+        return CreateTerminalResponse(terminalId: terminalId, _meta: nil)
     }
 
     /// Get output from a terminal process

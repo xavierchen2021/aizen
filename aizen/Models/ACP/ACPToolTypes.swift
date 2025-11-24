@@ -54,13 +54,11 @@ enum ToolStatus: String, Codable {
 
 struct ToolLocation: Codable {
     let path: String?
-    let startLine: Int?
-    let endLine: Int?
+    let line: Int?  // Line number (0-indexed position)
+    let _meta: [String: AnyCodable]?
 
     enum CodingKeys: String, CodingKey {
-        case path
-        case startLine
-        case endLine
+        case path, line, _meta
     }
 }
 
@@ -69,11 +67,11 @@ struct ToolLocation: Codable {
 struct AvailableCommand: Codable {
     let name: String
     let description: String
-    let inputSpec: CommandInputSpec?
+    let input: CommandInputSpec?
+    let _meta: [String: AnyCodable]?
 
     enum CodingKeys: String, CodingKey {
-        case name, description
-        case inputSpec = "input_spec"
+        case name, description, input, _meta
     }
 }
 

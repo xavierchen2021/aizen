@@ -46,8 +46,13 @@ class FileSearchWindowController: NSWindowController {
         // Position on active screen
         positionPanel(panel)
 
-        // Show panel - NSPanel with becomesKeyOnlyIfNeeded handles focus correctly
+        // Show panel and make it key to enable proper focus handling
         panel.makeKeyAndOrderFront(nil)
+
+        // Ensure focus is possible by making panel the key window
+        DispatchQueue.main.async {
+            panel.makeKey()
+        }
     }
 
     private func positionPanel(_ panel: FileSearchPanel) {
@@ -88,14 +93,21 @@ class FileSearchPanel: NSPanel {
             defer: false
         )
 
+        // Make panel fully transparent - no window background at all
         self.isOpaque = false
-        self.backgroundColor = .clear
+        self.backgroundColor = NSColor.clear
         self.hasShadow = false
         self.level = .floating
         self.isMovableByWindowBackground = false
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         self.titleVisibility = .hidden
         self.titlebarAppearsTransparent = true
+
+        // Remove any panel backdrop
+        if #available(macOS 12.0, *) {
+            // In newer macOS, explicitly disable content background
+        }
+        self.appearance = NSAppearance(named: .darkAqua)
 
         // Critical for NSPanel - proper keyboard focus handling
         self.becomesKeyOnlyIfNeeded = true
@@ -110,6 +122,11 @@ class FileSearchPanel: NSPanel {
                 }
             )
         )
+
+        // Ensure hosting view doesn't add any background
+        hostingView.wantsLayer = true
+        hostingView.layer?.isOpaque = false
+        hostingView.layer?.backgroundColor = NSColor.clear.cgColor
 
         self.contentView = hostingView
     }
@@ -189,9 +206,11 @@ struct FileSearchWindowContent: View {
         .background(Color.clear)
         .compositingGroup()
         .onAppear {
-            // Single focus call - NSPanel handles keyboard correctly
-            isSearchFocused = true
             viewModel.indexFiles()
+            // Small delay to ensure view hierarchy and panel are fully ready
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                isSearchFocused = true
+            }
         }
         .onChange(of: viewModel.results) { _ in
             updateWindowHeight()
@@ -278,9 +297,8 @@ struct FileSearchWindowContent: View {
             .background(Color.clear)
             .frame(maxHeight: 450)
             .onChange(of: viewModel.selectedIndex) { newIndex in
-                withAnimation(.easeOut(duration: 0.1)) {
-                    proxy.scrollTo(newIndex, anchor: .center)
-                }
+                // No animation for smoother single-item navigation
+                proxy.scrollTo(newIndex, anchor: .top)
             }
         }
     }

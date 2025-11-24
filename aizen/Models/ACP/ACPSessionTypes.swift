@@ -106,24 +106,79 @@ struct NewSessionRequest: Codable {
 }
 
 // Type discriminator for MCP servers
-enum MCPServerType: String, Codable {
-    case stdio
-    case http
-    case sse
+enum MCPServerConfig: Codable {
+    case stdio(StdioServerConfig)
+    case http(HTTPServerConfig)
+    case sse(SSEServerConfig)
+
+    enum CodingKeys: String, CodingKey {
+        case type
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decode(String.self, forKey: .type)
+
+        switch type {
+        case "stdio":
+            self = .stdio(try StdioServerConfig(from: decoder))
+        case "http":
+            self = .http(try HTTPServerConfig(from: decoder))
+        case "sse":
+            self = .sse(try SSEServerConfig(from: decoder))
+        default:
+            throw DecodingError.dataCorruptedError(forKey: .type, in: container, debugDescription: "Unknown MCP server type: \(type)")
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+
+        switch self {
+        case .stdio(let config):
+            try container.encode("stdio", forKey: .type)
+            try config.encode(to: encoder)
+        case .http(let config):
+            try container.encode("http", forKey: .type)
+            try config.encode(to: encoder)
+        case .sse(let config):
+            try container.encode("sse", forKey: .type)
+            try config.encode(to: encoder)
+        }
+    }
 }
 
-struct MCPServerConfig: Codable {
-    let type: MCPServerType
+struct StdioServerConfig: Codable {
     let name: String
-    let command: String?
-    let args: [String]?
-    let env: [EnvVariable]?
-    let url: String?  // For http/sse
-    let headers: [HTTPHeader]?  // For http/sse
+    let command: String  // Required for stdio
+    let args: [String]  // Required for stdio
+    let env: [EnvVariable]  // Required for stdio
     let _meta: [String: AnyCodable]?
 
     enum CodingKeys: String, CodingKey {
-        case type, name, command, args, env, url, headers, _meta
+        case name, command, args, env, _meta
+    }
+}
+
+struct HTTPServerConfig: Codable {
+    let name: String
+    let url: String  // Required for http
+    let headers: [HTTPHeader]?  // Optional for http
+    let _meta: [String: AnyCodable]?
+
+    enum CodingKeys: String, CodingKey {
+        case name, url, headers, _meta
+    }
+}
+
+struct SSEServerConfig: Codable {
+    let name: String
+    let url: String  // Required for sse
+    let headers: [HTTPHeader]?  // Optional for sse
+    let _meta: [String: AnyCodable]?
+
+    enum CodingKeys: String, CodingKey {
+        case name, url, headers, _meta
     }
 }
 
@@ -340,11 +395,10 @@ struct WriteTextFileRequest: Codable {
 }
 
 struct WriteTextFileResponse: Codable {
-    let success: Bool
     let _meta: [String: AnyCodable]?
 
     enum CodingKeys: String, CodingKey {
-        case success, _meta
+        case _meta
     }
 }
 
