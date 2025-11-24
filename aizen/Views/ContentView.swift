@@ -27,6 +27,7 @@ struct ContentView: View {
     @State private var previousWorktree: Worktree?
     @AppStorage("hasShownOnboarding") private var hasShownOnboarding = false
     @State private var showingOnboarding = false
+    @AppStorage("zenModeEnabled") private var zenModeEnabled = false
 
     // Persistent selection storage
     @AppStorage("selectedWorkspaceId") private var selectedWorkspaceId: String?
@@ -52,22 +53,30 @@ struct ContentView: View {
             .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 300)
         } content: {
             // Middle panel - worktree list or detail
-            if let repository = selectedRepository {
-                WorktreeListView(
-                    repository: repository,
-                    selectedWorktree: $selectedWorktree,
-                    repositoryManager: repositoryManager,
-                    tabStateManager: tabStateManager
-                )
-                .navigationSplitViewColumnWidth(min: 250, ideal: 300, max: 400)
-            } else {
-                placeholderView(
-                    titleKey: "contentView.selectRepository",
-                    systemImage: "folder.badge.gearshape",
-                    descriptionKey: "contentView.selectRepositoryDescription"
-                )
-                .navigationSplitViewColumnWidth(min: 250, ideal: 300, max: 400)
+            Group {
+                if let repository = selectedRepository {
+                    WorktreeListView(
+                        repository: repository,
+                        selectedWorktree: $selectedWorktree,
+                        repositoryManager: repositoryManager,
+                        tabStateManager: tabStateManager
+                    )
+                } else {
+                    placeholderView(
+                        titleKey: "contentView.selectRepository",
+                        systemImage: "folder.badge.gearshape",
+                        descriptionKey: "contentView.selectRepositoryDescription"
+                    )
+                }
             }
+            .navigationSplitViewColumnWidth(
+                min: zenModeEnabled ? 0 : 250,
+                ideal: zenModeEnabled ? 0 : 300,
+                max: zenModeEnabled ? 0 : 400
+            )
+            .opacity(zenModeEnabled ? 0 : 1)
+            .allowsHitTesting(!zenModeEnabled)
+            .animation(.easeInOut(duration: 0.25), value: zenModeEnabled)
         } detail: {
             // Right panel - worktree details
             if let worktree = selectedWorktree, !worktree.isDeleted {

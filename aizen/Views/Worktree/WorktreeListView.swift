@@ -15,6 +15,7 @@ struct WorktreeListView: View {
 
     @State private var showingCreateWorktree = false
     @State private var searchText = ""
+    @AppStorage("zenModeEnabled") private var zenModeEnabled = false
 
     var worktrees: [Worktree] {
         let wts = (repository.worktrees as? Set<Worktree>) ?? []
@@ -81,14 +82,16 @@ struct WorktreeListView: View {
         }
         .navigationTitle(repository.name ?? "Unknown")
         .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Spacer()
-            }
-            ToolbarItem(placement: .automatic) {
-                Button {
-                    showingCreateWorktree = true
-                } label: {
-                    Label(String(localized: "worktree.list.add"), systemImage: "plus")
+            if !zenModeEnabled {
+                ToolbarItem(placement: .automatic) {
+                    Spacer()
+                }
+                ToolbarItem(placement: .automatic) {
+                    Button {
+                        showingCreateWorktree = true
+                    } label: {
+                        Label(String(localized: "worktree.list.add"), systemImage: "plus")
+                    }
                 }
             }
         }

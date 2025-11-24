@@ -26,6 +26,7 @@ struct WorktreeDetailView: View {
     @AppStorage("showBrowserTab") private var showBrowserTab = true
     @AppStorage("showOpenInApp") private var showOpenInApp = true
     @AppStorage("showGitStatus") private var showGitStatus = true
+    @AppStorage("zenModeEnabled") private var zenModeEnabled = false
     @State private var selectedTab = "chat"
     @State private var lastOpenedApp: DetectedApp?
     @State private var showingGitSidebar = false
@@ -167,7 +168,35 @@ struct WorktreeDetailView: View {
     }
 
     @ToolbarContentBuilder
-    var appAndGitToolbarItems: some ToolbarContent {
+    var leadingToolbarItems: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            HStack(spacing: 12) {
+                zenModeButton
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var zenModeButton: some View {
+        let button = Button(action: {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                zenModeEnabled.toggle()
+            }
+        }) {
+            Label("Zen Mode", systemImage: zenModeEnabled ? "pip.enter" : "pip.exit")
+        }
+        .labelStyle(.iconOnly)
+        .help(zenModeEnabled ? "Show Worktree List" : "Hide Worktree List (Zen Mode)")
+        
+        if #available(macOS 14.0, *) {
+            button.symbolEffect(.bounce, value: zenModeEnabled)
+        } else {
+            button
+        }
+    }
+
+    @ToolbarContentBuilder
+    var trailingToolbarItems: some ToolbarContent {
         if showOpenInApp {
             ToolbarItem {
                 OpenInAppButton(
@@ -308,6 +337,8 @@ struct WorktreeDetailView: View {
                 validateSelectedTab()
             }
             .toolbar {
+                leadingToolbarItems
+                
                 tabPickerToolbarItem
 
                 if shouldShowSessionToolbar {
@@ -322,7 +353,7 @@ struct WorktreeDetailView: View {
                     }
                 }
 
-                appAndGitToolbarItems
+                trailingToolbarItems
             }
             .task(id: worktree.id) {
                 await setupGitMonitoring()
