@@ -23,9 +23,18 @@ struct ChatTabView: View {
     init(worktree: Worktree, selectedSessionId: Binding<UUID?>) {
         self.worktree = worktree
         self._selectedSessionId = selectedSessionId
+
+        // Handle deleted worktree gracefully - use impossible predicate to return empty results
+        let predicate: NSPredicate
+        if let worktreeId = worktree.id {
+            predicate = NSPredicate(format: "worktree.id == %@", worktreeId as CVarArg)
+        } else {
+            predicate = NSPredicate(value: false)
+        }
+
         self._sessions = FetchRequest(
             sortDescriptors: [NSSortDescriptor(keyPath: \ChatSession.createdAt, ascending: true)],
-            predicate: NSPredicate(format: "worktree.id == %@", worktree.id! as CVarArg),
+            predicate: predicate,
             animation: .default
         )
     }
