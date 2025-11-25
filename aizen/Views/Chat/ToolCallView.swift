@@ -11,43 +11,121 @@ import Foundation
 struct ToolCallView: View {
     let toolCall: ToolCall
     var onOpenDetails: ((ToolCall) -> Void)? = nil
+    var agentSession: AgentSession? = nil
+
+    @State private var isExpanded: Bool
+
+    init(toolCall: ToolCall, onOpenDetails: ((ToolCall) -> Void)? = nil, agentSession: AgentSession? = nil) {
+        self.toolCall = toolCall
+        self.onOpenDetails = onOpenDetails
+        self.agentSession = agentSession
+        // Default expanded for edit, diff, and terminal content
+        let shouldExpand = toolCall.kind == .edit || toolCall.kind == .delete ||
+            toolCall.content.contains { content in
+                switch content {
+                case .diff, .terminal: return true
+                default: return false
+                }
+            }
+        self._isExpanded = State(initialValue: shouldExpand)
+    }
 
     var body: some View {
-        Button(action: { onOpenDetails?(toolCall) }) {
-            HStack(spacing: 8) {
-                // Status dot
-                Circle()
-                    .fill(statusColor)
-                    .frame(width: 6, height: 6)
-
-                // Tool icon
-                toolIcon
-                    .foregroundColor(.secondary)
-                    .frame(width: 12, height: 12)
-
-                // Title
-                Text(toolCall.title)
-                    .font(.system(size: 11))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-
-                if let preview = editPreviewText {
-                    Text(preview)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
+        VStack(alignment: .leading, spacing: 4) {
+            // Header row (always visible)
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isExpanded.toggle()
                 }
+            }) {
+                HStack(spacing: 8) {
+                    // Status dot
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: 6, height: 6)
 
-                Spacer(minLength: 6)
+                    // Tool icon
+                    toolIcon
+                        .foregroundColor(.secondary)
+                        .frame(width: 12, height: 12)
+
+                    // Title
+                    Text(toolCall.title)
+                        .font(.system(size: 11))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+
+                    // Expand indicator if has content
+                    if hasContent {
+                        Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 8, weight: .medium))
+                            .foregroundStyle(.tertiary)
+                    }
+
+                    Spacer(minLength: 6)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 3)
+                .contentShape(Rectangle())
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 3)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+
+            // Expandable content
+            if isExpanded && hasContent {
+                inlineContentView
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
-        .buttonStyle(.plain)
         .background(backgroundColor)
         .cornerRadius(3)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Inline Content
+
+    private var hasContent: Bool {
+        !toolCall.content.isEmpty
+    }
+
+    @ViewBuilder
+    private var inlineContentView: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(toolCall.content.enumerated()), id: \.offset) { _, content in
+                inlineContentItem(content)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func inlineContentItem(_ content: ToolCallContent) -> some View {
+        switch content {
+        case .content(let block):
+            inlineContentBlock(block)
+        case .diff(let diff):
+            InlineDiffView(diff: diff)
+        case .terminal(let terminal):
+            InlineTerminalView(terminalId: terminal.terminalId, agentSession: agentSession)
+        }
+    }
+
+    @ViewBuilder
+    private func inlineContentBlock(_ block: ContentBlock) -> some View {
+        switch block {
+        case .text(let textContent):
+            ScrollView {
+                Text(textContent.text)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.primary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 150)
+            .padding(6)
+            .background(Color(nsColor: .textBackgroundColor))
+            .cornerRadius(4)
+        default:
+            EmptyView()
+        }
     }
 
     // MARK: - Status
@@ -91,13 +169,17 @@ struct ToolCallView: View {
 
         for block in toolCall.content {
             switch block {
-            case .text(let content):
-                let trimmed = content.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if let firstLine = trimmed.split(separator: "\n").map(String.init).first, !firstLine.isEmpty {
-                    return firstLine
+            case .content(let contentBlock):
+                if case .text(let content) = contentBlock {
+                    let trimmed = content.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if let firstLine = trimmed.split(separator: "\n").map(String.init).first, !firstLine.isEmpty {
+                        return firstLine
+                    }
                 }
-            default:
-                continue
+            case .diff(let diff):
+                return "Modified: \(diff.path)"
+            case .terminal(let terminal):
+                return "Terminal: \(terminal.terminalId)"
             }
         }
 
@@ -229,29 +311,27 @@ struct ContentBlockView: View {
     @ViewBuilder
     private var contentBody: some View {
         switch block {
-            case .text(let content):
-                TextContentView(text: content.text)
-            case .image(let content):
-                ACPImageView(data: content.data, mimeType: content.mimeType)
-            case .resource(let content):
-                resourceView(for: content.resource)
-            case .audio(let content):
-                Text(String(format: String(localized: "chat.content.audioType"), content.mimeType))
-                    .foregroundColor(.secondary)
-            case .resourceLink(let content):
-                VStack(alignment: .leading, spacing: 4) {
-                    if let title = content.title {
-                        Text(title)
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                    }
-                    Text(content.uri)
-                        .font(.caption)
-                        .foregroundColor(.blue)
+        case .text(let content):
+            TextContentView(text: content.text)
+        case .image(let content):
+            ACPImageView(data: content.data, mimeType: content.mimeType)
+        case .resource(let content):
+            resourceView(for: content.resource)
+        case .audio(let content):
+            Text(String(format: String(localized: "chat.content.audioType"), content.mimeType))
+                .foregroundColor(.secondary)
+        case .resourceLink(let content):
+            VStack(alignment: .leading, spacing: 4) {
+                if let title = content.title {
+                    Text(title)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
                 }
-            default:
-                Text("Unsupported content type")
+                Text(content.uri)
+                    .font(.caption)
+                    .foregroundColor(.blue)
             }
+        }
     }
 
     private func copyContent() {
@@ -420,6 +500,140 @@ struct TerminalContentView: View {
 }
 
 
+// MARK: - Inline Diff View
+
+struct InlineDiffView: View {
+    let diff: ToolCallDiff
+
+    @AppStorage("terminalFontName") private var terminalFontName = "Menlo"
+    @AppStorage("terminalFontSize") private var terminalFontSize = 12.0
+
+    private var fontSize: CGFloat {
+        max(terminalFontSize - 2, 9)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            // File path header
+            HStack(spacing: 4) {
+                Image(systemName: "doc.badge.plus")
+                    .font(.system(size: 9))
+                Text(diff.path)
+                    .font(.system(size: 10, weight: .medium))
+            }
+            .foregroundStyle(.secondary)
+
+            // Diff content
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if let oldText = diff.oldText {
+                        ForEach(Array(oldText.split(separator: "\n", omittingEmptySubsequences: false).enumerated()), id: \.offset) { _, line in
+                            Text("- \(line)")
+                                .font(.custom(terminalFontName, size: fontSize))
+                                .foregroundColor(.red)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.red.opacity(0.1))
+                        }
+                    }
+                    ForEach(Array(diff.newText.split(separator: "\n", omittingEmptySubsequences: false).enumerated()), id: \.offset) { _, line in
+                        Text("+ \(line)")
+                            .font(.custom(terminalFontName, size: fontSize))
+                            .foregroundColor(.green)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.green.opacity(0.1))
+                    }
+                }
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 150)
+            .padding(8)
+            .background(Color(nsColor: .textBackgroundColor))
+            .cornerRadius(6)
+        }
+    }
+}
+
+// MARK: - Inline Terminal View
+
+struct InlineTerminalView: View {
+    let terminalId: String
+    var agentSession: AgentSession?
+
+    @AppStorage("terminalFontName") private var terminalFontName = "Menlo"
+    @AppStorage("terminalFontSize") private var terminalFontSize = 12.0
+
+    @State private var output: String = ""
+    @State private var isRunning: Bool = false
+    @State private var loadTask: Task<Void, Never>?
+
+    private var fontSize: CGFloat {
+        max(terminalFontSize - 2, 9) // Slightly smaller for inline view
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Terminal output with ANSI colors
+            ScrollView {
+                if output.isEmpty {
+                    Text("Waiting for output...")
+                        .font(.custom(terminalFontName, size: fontSize))
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text(ANSIParser.parse(output))
+                        .font(.custom(terminalFontName, size: fontSize))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .frame(maxHeight: 150)
+            .padding(8)
+            .background(Color(red: 0.11, green: 0.11, blue: 0.13))
+            .cornerRadius(6)
+
+            // Running indicator below
+            if isRunning {
+                HStack(spacing: 4) {
+                    ProgressView()
+                        .scaleEffect(0.5)
+                        .frame(width: 12, height: 12)
+                    Text("Running...")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 4)
+            }
+        }
+        .onAppear {
+            startLoading()
+        }
+        .onDisappear {
+            loadTask?.cancel()
+        }
+    }
+
+    private func startLoading() {
+        loadTask = Task {
+            guard let session = agentSession else { return }
+
+            // Poll for output
+            for _ in 0..<120 { // 60 seconds max
+                if Task.isCancelled { break }
+
+                output = await session.getTerminalOutput(terminalId: terminalId) ?? ""
+                isRunning = await session.isTerminalRunning(terminalId: terminalId)
+
+                if !isRunning && !output.isEmpty {
+                    break
+                }
+
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+        }
+    }
+}
+
 // MARK: - Preview
 
 #Preview {
@@ -429,7 +643,7 @@ struct TerminalContentView: View {
             title: "Read file: main.swift",
             kind: .read,
             status: .completed,
-            content: [.text(TextContent(text: "import SwiftUI\n\nstruct ContentView: View {\n    var body: some View {\n        Text(\"Hello, World!\")\n    }\n}", annotations: nil, _meta: nil))],
+            content: [.content(.text(TextContent(text: "import SwiftUI\n\nstruct ContentView: View {\n    var body: some View {\n        Text(\"Hello, World!\")\n    }\n}")))],
             locations: nil,
             rawInput: nil,
             rawOutput: nil
@@ -440,7 +654,7 @@ struct TerminalContentView: View {
             title: "Execute: swift build",
             kind: .execute,
             status: .inProgress,
-            content: [.text(TextContent(text: "$ swift build\nBuilding for production...", annotations: nil, _meta: nil))],
+            content: [.content(.text(TextContent(text: "$ swift build\nBuilding for production...")))],
             locations: nil,
             rawInput: nil,
             rawOutput: nil
@@ -462,7 +676,7 @@ struct TerminalContentView: View {
             title: "Edit file: Config.swift",
             kind: .edit,
             status: .failed,
-            content: [.text(TextContent(text: "Error: File not found", annotations: nil, _meta: nil))],
+            content: [.content(.text(TextContent(text: "Error: File not found")))],
             locations: nil,
             rawInput: nil,
             rawOutput: nil
@@ -473,7 +687,7 @@ struct TerminalContentView: View {
             title: "Apply diff",
             kind: .edit,
             status: .completed,
-            content: [.text(TextContent(text: "--- a/file.swift\n+++ b/file.swift\n@@ -1,3 +1,4 @@\n import SwiftUI\n+import Combine\n \n struct View: View {", annotations: nil, _meta: nil))],
+            content: [.diff(ToolCallDiff(path: "file.swift", oldText: "import SwiftUI\n\nstruct View: View {", newText: "import SwiftUI\nimport Combine\n\nstruct View: View {"))],
             locations: nil,
             rawInput: nil,
             rawOutput: nil

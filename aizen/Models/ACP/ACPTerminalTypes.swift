@@ -47,7 +47,7 @@ struct TerminalExitStatus: Codable {
     let _meta: [String: AnyCodable]?
 
     enum CodingKeys: String, CodingKey {
-        case exitCode = "exit_code"
+        case exitCode
         case signal
         case _meta
     }
@@ -76,7 +76,7 @@ struct CreateTerminalResponse: Codable {
     let _meta: [String: AnyCodable]?
 
     enum CodingKeys: String, CodingKey {
-        case terminalId = "terminal_id"
+        case terminalId
         case _meta
     }
 }
@@ -89,7 +89,7 @@ struct TerminalOutputRequest: Codable {
     let _meta: [String: AnyCodable]?
 
     enum CodingKeys: String, CodingKey {
-        case terminalId = "terminal_id"
+        case terminalId
         case sessionId
         case _meta
     }
@@ -102,7 +102,7 @@ struct TerminalOutputResponse: Codable {
     let _meta: [String: AnyCodable]?
 
     enum CodingKeys: String, CodingKey {
-        case output, truncated, exitStatus = "exit_status"
+        case output, truncated, exitStatus
         case _meta
     }
 }
@@ -115,20 +115,16 @@ struct WaitForExitRequest: Codable {
     let _meta: [String: AnyCodable]?
 
     enum CodingKeys: String, CodingKey {
-        case terminalId = "terminal_id"
+        case terminalId
         case sessionId
         case _meta
     }
 }
 
 struct WaitForExitResponse: Codable {
-    let exitStatus: TerminalExitStatus
+    let exitCode: Int?
+    let signal: String?
     let _meta: [String: AnyCodable]?
-
-    enum CodingKeys: String, CodingKey {
-        case exitStatus = "exit_status"
-        case _meta
-    }
 }
 
 // MARK: - Kill Terminal
@@ -139,7 +135,7 @@ struct KillTerminalRequest: Codable {
     let _meta: [String: AnyCodable]?
 
     enum CodingKeys: String, CodingKey {
-        case terminalId = "terminal_id"
+        case terminalId
         case sessionId
         case _meta
     }
@@ -162,7 +158,7 @@ struct ReleaseTerminalRequest: Codable {
     let _meta: [String: AnyCodable]?
 
     enum CodingKeys: String, CodingKey {
-        case terminalId = "terminal_id"
+        case terminalId
         case sessionId
         case _meta
     }

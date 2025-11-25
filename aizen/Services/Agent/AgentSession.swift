@@ -288,6 +288,18 @@ class AgentSession: ObservableObject, ACPClientDelegate {
     func respondToPermission(optionId: String) {
         permissionHandler.respondToPermission(optionId: optionId)
     }
+
+    // MARK: - Terminal Output Access
+
+    /// Get terminal output for display in UI
+    func getTerminalOutput(terminalId: String) async -> String? {
+        return await terminalDelegate.getOutput(terminalId: TerminalId(terminalId))
+    }
+
+    /// Check if terminal is still running
+    func isTerminalRunning(terminalId: String) async -> Bool {
+        return await terminalDelegate.isRunning(terminalId: TerminalId(terminalId))
+    }
 }
 
 // MARK: - Supporting Types

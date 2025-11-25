@@ -27,136 +27,93 @@ extension AgentSession {
             return
         }
 
+        logger.debug("session/update raw params: \(String(describing: notification.params?.value))")
+
         do {
-            let params = notification.params?.value as? [String: Any]
-            let data = try JSONSerialization.data(withJSONObject: params ?? [:])
-            let updateNotification = try JSONDecoder().decode(SessionUpdateNotification.self, from: data)
+            let params = notification.params?.value as? [String: Any] ?? [:]
+            let data = try JSONSerialization.data(withJSONObject: params)
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            let updateNotification = try decoder.decode(SessionUpdateNotification.self, from: data)
 
-            let updateType = updateNotification.update.sessionUpdate
+            logger.debug("Parsed session/update: \(String(describing: updateNotification.update))")
 
-            // Handle different update types
-            switch updateType {
-            case "tool_call", "tool_call_update":
-                // Prefer full payload when provided
-                if let toolCallsPayload = updateNotification.update.toolCalls, !toolCallsPayload.isEmpty {
-                    updateToolCalls(toolCallsPayload)
-                    break
-                }
+            // Handle different update types using the strongly-typed enum
+            switch updateNotification.update {
+            case .toolCall(let toolCallUpdate):
+                // Mark any in-progress message as complete before tool call
+                // This ensures text after tool calls appears as a new message
+                markLastMessageComplete()
 
-                // Fallback to single-field updates
-                if let toolCallId = updateNotification.update.toolCallId {
-                    // If this is a new tool call (not an update), mark current message complete
-                    if updateNotification.update.sessionUpdate == "tool_call" &&
-                       !toolCalls.contains(where: { $0.toolCallId == toolCallId }) {
-                        markLastMessageComplete()
+                // Prefer full payload when provided; use readable title fallback
+                let preferredTitle = normalizedTitle(toolCallUpdate.title) ?? derivedTitle(from: toolCallUpdate)
+                updateToolCalls([toolCallUpdate.asToolCall(
+                    preferredTitle: preferredTitle,
+                    fallbackTitle: { self.fallbackTitle(kind: $0) }
+                )])
+            case .toolCallUpdate(let details):
+                let toolCallId = details.toolCallId
+                if let index = toolCalls.firstIndex(where: { $0.toolCallId == toolCallId }) {
+                    var updated = toolCalls[index]
+                    updated.status = details.status ?? updated.status
+                    updated.locations = details.locations ?? updated.locations
+                    updated.kind = details.kind ?? updated.kind
+                    updated.rawInput = details.rawInput ?? updated.rawInput
+                    updated.rawOutput = details.rawOutput ?? updated.rawOutput
+                    if let newTitle = normalizedTitle(details.title) {
+                        updated.title = newTitle
                     }
-
-                    if let existingIndex = toolCalls.firstIndex(where: { $0.toolCallId == toolCallId }) {
-                        // Update existing tool call with new fields/content
-                        var updated = toolCalls[existingIndex]
-                        let newBlocks = decodeContentBlocks(updateNotification.update.content)
-                        let mergedContent = coalesceAdjacentTextBlocks(updated.content + newBlocks)
-
-                        updated = ToolCall(
-                            toolCallId: updated.toolCallId,
-                            title: normalizedTitle(updateNotification.update.title) ?? updated.title,
-                            kind: updateNotification.update.kind ?? updated.kind,
-                            status: updateNotification.update.status ?? updated.status,
-                            content: mergedContent,
-                            locations: updateNotification.update.locations ?? updated.locations,
-                            rawInput: updateNotification.update.rawInput ?? updated.rawInput,
-                            rawOutput: updateNotification.update.rawOutput ?? updated.rawOutput,
-                            timestamp: updated.timestamp
-                        )
-
-                        toolCalls[existingIndex] = updated
-                    } else {
-                        // Create minimal placeholder so it shows up in UI even if some fields missing
-                        let newCall = ToolCall(
-                            toolCallId: toolCallId,
-                            title: normalizedTitle(updateNotification.update.title) ?? toolCallId,
-                            kind: updateNotification.update.kind ?? .other,
-                            status: updateNotification.update.status ?? .pending,
-                            content: coalesceAdjacentTextBlocks(decodeContentBlocks(updateNotification.update.content)),
-                            locations: updateNotification.update.locations,
-                            rawInput: updateNotification.update.rawInput,
-                            rawOutput: updateNotification.update.rawOutput,
-                            timestamp: Date()
-                        )
-                        toolCalls.append(newCall)
+                    if let newContent = details.content {
+                        let merged = coalesceAdjacentTextBlocks(updated.content + newContent)
+                        updated.content = merged
                     }
+                    toolCalls[index] = updated
                 }
+            case .agentMessageChunk(let block):
+                currentThought = nil
+                let (text, blockContent) = textAndContent(from: block)
+                guard !text.isEmpty else { break }
 
-            case "agent_message_chunk":
-                if let contentAny = updateNotification.update.content?.value {
-                    currentThought = nil
-
-                    if let contentDict = contentAny as? [String: Any],
-                       let type = contentDict["type"] as? String,
-                       type == "text",
-                       let text = contentDict["text"] as? String {
-
-                        // Append to last agent message if it exists and is still being streamed
-                        if let lastMessage = messages.last,
-                           lastMessage.role == .agent,
-                           !lastMessage.isComplete {
-                            let newContent = lastMessage.content + text
-                            messages[messages.count - 1] = MessageItem(
-                                id: lastMessage.id,
-                                role: .agent,
-                                content: newContent,
-                                timestamp: lastMessage.timestamp,
-                                toolCalls: lastMessage.toolCalls,
-                                contentBlocks: lastMessage.contentBlocks,
-                                isComplete: false,
-                                startTime: lastMessage.startTime,
-                                executionTime: lastMessage.executionTime,
-                                requestId: lastMessage.requestId
-                            )
-                        } else {
-                            // Start a new agent message
-                            addAgentMessage(text, isComplete: false, startTime: Date())
-                        }
-
-                    }
+                if let lastMessage = messages.last,
+                   lastMessage.role == .agent,
+                   !lastMessage.isComplete {
+                    let newContent = lastMessage.content + text
+                    messages[messages.count - 1] = MessageItem(
+                        id: lastMessage.id,
+                        role: .agent,
+                        content: newContent,
+                        timestamp: lastMessage.timestamp,
+                        toolCalls: lastMessage.toolCalls,
+                        contentBlocks: lastMessage.contentBlocks + blockContent,
+                        isComplete: false,
+                        startTime: lastMessage.startTime,
+                        executionTime: lastMessage.executionTime,
+                        requestId: lastMessage.requestId
+                    )
+                } else {
+                    addAgentMessage(text, contentBlocks: blockContent, isComplete: false, startTime: Date())
                 }
-
-            case "user_message_chunk":
-                // User messages already added when sending
+            case .userMessageChunk:
                 break
-
-            case "agent_thought_chunk":
-                if let contentAny = updateNotification.update.content?.value,
-                   let contentDict = contentAny as? [String: Any],
-                   let text = contentDict["text"] as? String {
-                    logger.debug("Agent thought: \(text)")
-                    // Accumulate thought chunks instead of replacing
-                    if let existing = currentThought {
-                        currentThought = existing + text
-                    } else {
-                        currentThought = text
-                    }
+            case .agentThoughtChunk(let block):
+                let (text, _) = textAndContent(from: block)
+                if text.isEmpty { break }
+                logger.debug("Agent thought: \(text)")
+                if let existing = currentThought {
+                    currentThought = existing + text
+                } else {
+                    currentThought = text
                 }
-
-            case "plan":
-                if let plan = updateNotification.update.plan {
-                    agentPlan = plan
-                }
-
-            case "available_commands_update":
-                if let commands = updateNotification.update.availableCommands {
-                    availableCommands = commands
-                }
-
-            case "current_mode_update":
-                if let mode = updateNotification.update.currentMode {
-                    currentMode = mode
-                }
-
-            default:
-                break
+            case .plan(let plan):
+                agentPlan = plan
+            case .availableCommandsUpdate(let commands):
+                availableCommands = commands
+            case .currentModeUpdate(let mode):
+                currentModeId = mode
+                currentMode = SessionMode(rawValue: mode)
             }
         } catch {
+            logger.error("Failed to parse session update: \(error.localizedDescription)")
             self.error = "Failed to parse session update: \(error.localizedDescription)"
         }
     }
@@ -187,6 +144,7 @@ extension AgentSession {
 
     // MARK: - Content Decoding
 
+    
     private func decodeContentBlocks(_ content: AnyCodable?) -> [ContentBlock] {
         guard let value = content?.value else { return [] }
 
@@ -255,9 +213,69 @@ extension AgentSession {
         return result
     }
 
+    private func coalesceAdjacentTextBlocks(_ blocks: [ToolCallContent]) -> [ToolCallContent] {
+        var result: [ToolCallContent] = []
+
+        for block in blocks {
+            if case .content(let contentBlock) = block,
+               case .text(let newText) = contentBlock,
+               let last = result.last,
+               case .content(let lastContentBlock) = last,
+               case .text(let lastText) = lastContentBlock {
+                // Skip exact duplicates
+                if lastText.text == newText.text {
+                    continue
+                }
+                // Replace last with combined text
+                result.removeLast()
+                let combined = TextContent(text: lastText.text + newText.text)
+                result.append(.content(.text(combined)))
+            } else {
+                result.append(block)
+            }
+        }
+        return result
+    }
+
+    /// Extract plain text from a content block (best effort)
+    private func textAndContent(from block: ContentBlock) -> (String, [ContentBlock]) {
+        switch block {
+        case .text(let text):
+            return (text.text, [.text(text)])
+        default:
+            return ("", [block])
+        }
+    }
+
     private func normalizedTitle(_ raw: String?) -> String? {
         guard let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else { return nil }
         return trimmed
+    }
+
+    private func fallbackTitle(kind: ToolKind?) -> String {
+        guard let kind else { return "Tool" }
+        let text = kind.rawValue.replacingOccurrences(of: "_", with: " ")
+        return text.capitalized
+    }
+
+    /// Best-effort human title from tool input payloads
+    private func derivedTitle(from update: ToolCallUpdate) -> String? {
+        guard let raw = update.rawInput?.value as? [String: Any] else { return nil }
+
+        // Common keys agents send
+        let keys = ["path", "file", "filePath", "query", "command", "title", "name", "description"]
+        for key in keys {
+            if let val = raw[key] as? String, !val.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return val
+            }
+        }
+
+        // If args array exists, join for display
+        if let args = raw["args"] as? [String], !args.isEmpty {
+            return args.joined(separator: " ")
+        }
+
+        return nil
     }
 
     private func cleanTitle(_ title: String) -> String {
@@ -294,4 +312,26 @@ extension AgentSession {
         return String(describing: raw)
     }
 
+}
+
+private extension ToolCallUpdate {
+    func asToolCall(
+        preferredTitle: String? = nil,
+        fallbackTitle: (ToolKind?) -> String = { kind in
+            let text = kind?.rawValue.replacingOccurrences(of: "_", with: " ") ?? "Tool"
+            return text.capitalized
+        }
+    ) -> ToolCall {
+        ToolCall(
+            toolCallId: toolCallId,
+            title: preferredTitle ?? fallbackTitle(kind),
+            kind: kind,
+            status: status,
+            content: content,
+            locations: locations,
+            rawInput: rawInput,
+            rawOutput: rawOutput,
+            timestamp: Date()
+        )
+    }
 }

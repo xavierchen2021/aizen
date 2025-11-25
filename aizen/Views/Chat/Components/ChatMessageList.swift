@@ -16,6 +16,7 @@ struct ChatMessageList: View {
     let onAppear: () -> Void
     let renderInlineMarkdown: (String) -> AttributedString
     var onToolTap: (ToolCall) -> Void = { _ in }
+    var agentSession: AgentSession? = nil
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -28,9 +29,11 @@ struct ChatMessageList: View {
                                 .id(message.id)
                                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
                         case .toolCall(let toolCall):
-                            ToolCallView(toolCall: toolCall) { tapped in
-                                onToolTap(tapped)
-                            }
+                            ToolCallView(
+                                toolCall: toolCall,
+                                onOpenDetails: { tapped in onToolTap(tapped) },
+                                agentSession: agentSession
+                            )
                             .transition(.opacity.combined(with: .move(edge: .leading)))
                         }
                     }

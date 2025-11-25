@@ -78,14 +78,21 @@ struct MessageBubbleView: View {
                         MessageContentView(content: message.content, isComplete: message.isComplete)
                     }
 
-                    if message.contentBlocks.count > 1 {
-                        let attachmentBlocks = Array(message.contentBlocks.dropFirst())
-                        HStack(spacing: 6) {
-                            ForEach(Array(attachmentBlocks.enumerated()), id: \.offset) { _, block in
-                                AttachmentChipView(block: block)
-                            }
+                    // Only show attachment chips for user messages with non-text attachments
+                    if message.role == .user, message.contentBlocks.count > 1 {
+                        let attachmentBlocks = message.contentBlocks.dropFirst().filter { block in
+                            // Only show non-text blocks as attachments
+                            if case .text = block { return false }
+                            return true
                         }
-                        .padding(.top, 4)
+                        if !attachmentBlocks.isEmpty {
+                            HStack(spacing: 6) {
+                                ForEach(Array(attachmentBlocks.enumerated()), id: \.offset) { _, block in
+                                    AttachmentChipView(block: block)
+                                }
+                            }
+                            .padding(.top, 4)
+                        }
                     }
 
                     if message.role != .system {

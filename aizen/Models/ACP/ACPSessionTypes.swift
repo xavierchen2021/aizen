@@ -52,16 +52,43 @@ struct FileSystemCapabilities: Codable {
 struct AgentCapabilities: Codable {
     let loadSession: Bool?
     let mcpCapabilities: MCPCapabilities?
+    let promptCapabilities: PromptCapabilities?
+    let sessionCapabilities: SessionCapabilities?
 
     enum CodingKeys: String, CodingKey {
-        case loadSession = "load_session"
-        case mcpCapabilities = "mcp_capabilities"
+        case loadSession
+        case mcpCapabilities
+        case promptCapabilities
+        case sessionCapabilities
     }
 }
 
 struct MCPCapabilities: Codable {
     let http: Bool?
-    let ssh: Bool?
+    let sse: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case http
+        case sse
+    }
+}
+
+struct PromptCapabilities: Codable {
+    let audio: Bool?
+    let embeddedContext: Bool?
+    let image: Bool?
+}
+
+struct SessionCapabilities: Codable {
+    let _meta: [String: AnyCodable]?
+}
+
+// MARK: - Client Info
+
+struct ClientInfo: Codable {
+    let name: String
+    let title: String?
+    let version: String?
 }
 
 // MARK: - Request/Response Types
@@ -69,10 +96,12 @@ struct MCPCapabilities: Codable {
 struct InitializeRequest: Codable {
     let protocolVersion: Int
     let clientCapabilities: ClientCapabilities
+    let clientInfo: ClientInfo?
 
     enum CodingKeys: String, CodingKey {
         case protocolVersion
         case clientCapabilities
+        case clientInfo
     }
 }
 
@@ -361,7 +390,7 @@ struct AuthenticateResponse: Codable {
 
 struct ReadTextFileRequest: Codable {
     let path: String
-    let line: Int?  // Start line (0-indexed position)
+    let line: Int?  // Start line (1-based per ACP spec)
     let limit: Int?  // Number of lines to read
     let sessionId: String
     let _meta: [String: AnyCodable]?
@@ -499,6 +528,7 @@ enum SessionUpdate: Codable {
 
     enum CodingKeys: String, CodingKey {
         case sessionUpdate
+        case content  // For ContentChunk types (user/agent/thought message chunks)
     }
 
     init(from decoder: Decoder) throws {
@@ -507,13 +537,16 @@ enum SessionUpdate: Codable {
 
         switch updateType {
         case "user_message_chunk":
-            let content = try ContentBlock(from: decoder)
+            // ContentChunk wraps content in a "content" field
+            let content = try container.decode(ContentBlock.self, forKey: .content)
             self = .userMessageChunk(content)
         case "agent_message_chunk":
-            let content = try ContentBlock(from: decoder)
+            // ContentChunk wraps content in a "content" field
+            let content = try container.decode(ContentBlock.self, forKey: .content)
             self = .agentMessageChunk(content)
         case "agent_thought_chunk":
-            let content = try ContentBlock(from: decoder)
+            // ContentChunk wraps content in a "content" field
+            let content = try container.decode(ContentBlock.self, forKey: .content)
             self = .agentThoughtChunk(content)
         case "tool_call":
             let toolCall = try ToolCallUpdate(from: decoder)
@@ -525,10 +558,10 @@ enum SessionUpdate: Codable {
             let plan = try Plan(from: decoder)
             self = .plan(plan)
         case "available_commands_update":
-            let commands = try decoder.container(keyedBy: AnyCodingKey.self).decode([AvailableCommand].self, forKey: AnyCodingKey(stringValue: "available_commands")!)
+            let commands = try decoder.container(keyedBy: AnyCodingKey.self).decode([AvailableCommand].self, forKey: AnyCodingKey(stringValue: "availableCommands")!)
             self = .availableCommandsUpdate(commands)
         case "current_mode_update":
-            let modeId = try decoder.container(keyedBy: AnyCodingKey.self).decode(String.self, forKey: AnyCodingKey(stringValue: "current_mode_id")!)
+            let modeId = try decoder.container(keyedBy: AnyCodingKey.self).decode(String.self, forKey: AnyCodingKey(stringValue: "currentModeId")!)
             self = .currentModeUpdate(modeId)
         default:
             throw DecodingError.dataCorruptedError(forKey: .sessionUpdate, in: container, debugDescription: "Unknown session update type: \(updateType)")
@@ -541,13 +574,13 @@ enum SessionUpdate: Codable {
         switch self {
         case .userMessageChunk(let content):
             try container.encode("user_message_chunk", forKey: .sessionUpdate)
-            try content.encode(to: encoder)
+            try container.encode(content, forKey: .content)
         case .agentMessageChunk(let content):
             try container.encode("agent_message_chunk", forKey: .sessionUpdate)
-            try content.encode(to: encoder)
+            try container.encode(content, forKey: .content)
         case .agentThoughtChunk(let content):
             try container.encode("agent_thought_chunk", forKey: .sessionUpdate)
-            try content.encode(to: encoder)
+            try container.encode(content, forKey: .content)
         case .toolCall(let toolCall):
             try container.encode("tool_call", forKey: .sessionUpdate)
             try toolCall.encode(to: encoder)
@@ -560,11 +593,11 @@ enum SessionUpdate: Codable {
         case .availableCommandsUpdate(let commands):
             try container.encode("available_commands_update", forKey: .sessionUpdate)
             var innerContainer = encoder.container(keyedBy: AnyCodingKey.self)
-            try innerContainer.encode(commands, forKey: AnyCodingKey(stringValue: "available_commands")!)
+            try innerContainer.encode(commands, forKey: AnyCodingKey(stringValue: "availableCommands")!)
         case .currentModeUpdate(let modeId):
             try container.encode("current_mode_update", forKey: .sessionUpdate)
             var innerContainer = encoder.container(keyedBy: AnyCodingKey.self)
-            try innerContainer.encode(modeId, forKey: AnyCodingKey(stringValue: "current_mode_id")!)
+            try innerContainer.encode(modeId, forKey: AnyCodingKey(stringValue: "currentModeId")!)
         }
     }
 }
@@ -574,17 +607,17 @@ struct ToolCallUpdate: Codable {
     let title: String
     let kind: ToolKind
     let status: ToolStatus
-    let content: [ContentBlock]
+    let content: [ToolCallContent]
     let locations: [ToolLocation]?
     let rawInput: AnyCodable?
     let rawOutput: AnyCodable?
     let _meta: [String: AnyCodable]?
 
     enum CodingKeys: String, CodingKey {
-        case toolCallId = "tool_call_id"
+        case toolCallId
         case title, kind, status, content, locations
-        case rawInput = "raw_input"
-        case rawOutput = "raw_output"
+        case rawInput
+        case rawOutput
         case _meta
     }
 }
@@ -593,13 +626,18 @@ struct ToolCallUpdateDetails: Codable {
     let toolCallId: String
     let status: ToolStatus?
     let locations: [ToolLocation]?
+    let kind: ToolKind?
+    let title: String?
+    let content: [ToolCallContent]?
+    let rawInput: AnyCodable?
     let rawOutput: AnyCodable?
     let _meta: [String: AnyCodable]?
 
     enum CodingKeys: String, CodingKey {
-        case toolCallId = "tool_call_id"
-        case status, locations
-        case rawOutput = "raw_output"
+        case toolCallId
+        case status, locations, kind, title, content
+        case rawInput
+        case rawOutput
         case _meta
     }
 }
@@ -617,5 +655,163 @@ private struct AnyCodingKey: CodingKey {
     init?(intValue: Int) {
         self.stringValue = String(intValue)
         self.intValue = intValue
+    }
+}
+
+// MARK: - Convenience accessors for SessionUpdate
+
+extension SessionUpdate {
+    /// Discriminant for UI handling
+    var sessionUpdate: String {
+        switch self {
+        case .userMessageChunk: return "user_message_chunk"
+        case .agentMessageChunk: return "agent_message_chunk"
+        case .agentThoughtChunk: return "agent_thought_chunk"
+        case .toolCall: return "tool_call"
+        case .toolCallUpdate: return "tool_call_update"
+        case .plan: return "plan"
+        case .availableCommandsUpdate: return "available_commands_update"
+        case .currentModeUpdate: return "current_mode_update"
+        }
+    }
+
+    /// Raw content as JSON-friendly structure
+    var content: AnyCodable? {
+        switch self {
+        case .userMessageChunk(let block),
+             .agentMessageChunk(let block),
+             .agentThoughtChunk(let block):
+            return AnyCodable(block.toDictionary())
+        case .toolCall(let call):
+            let blocks = call.content.map { $0.toDictionary() }
+            return AnyCodable(blocks)
+        case .toolCallUpdate(let details):
+            if let raw = details.rawOutput {
+                return raw
+            }
+            return nil
+        default:
+            return nil
+        }
+    }
+
+    var toolCalls: [ToolCall]? {
+        switch self {
+        case .toolCall(let update):
+            return [
+                ToolCall(
+                    toolCallId: update.toolCallId,
+                    title: update.title,
+                    kind: update.kind,
+                    status: update.status,
+                    content: update.content,
+                    locations: update.locations,
+                    rawInput: update.rawInput,
+                    rawOutput: update.rawOutput,
+                    timestamp: Date()
+                )
+            ]
+        default:
+            return nil
+        }
+    }
+
+    var toolCallId: String? {
+        switch self {
+        case .toolCall(let update): return update.toolCallId
+        case .toolCallUpdate(let details): return details.toolCallId
+        default: return nil
+        }
+    }
+
+    var title: String? {
+        switch self {
+        case .toolCall(let update): return update.title
+        case .toolCallUpdate: return nil
+        default: return nil
+        }
+    }
+
+    var kind: ToolKind? {
+        switch self {
+        case .toolCall(let update): return update.kind
+        default: return nil
+        }
+    }
+
+    var status: ToolStatus? {
+        switch self {
+        case .toolCall(let update): return update.status
+        case .toolCallUpdate(let details): return details.status
+        default: return nil
+        }
+    }
+
+    var locations: [ToolLocation]? {
+        switch self {
+        case .toolCall(let update): return update.locations
+        case .toolCallUpdate(let details): return details.locations
+        default: return nil
+        }
+    }
+
+    var rawInput: AnyCodable? {
+        switch self {
+        case .toolCall(let update): return update.rawInput
+        default: return nil
+        }
+    }
+
+    var rawOutput: AnyCodable? {
+        switch self {
+        case .toolCall(let update): return update.rawOutput
+        case .toolCallUpdate(let details): return details.rawOutput
+        default: return nil
+        }
+    }
+
+    var plan: Plan? {
+        switch self {
+        case .plan(let plan): return plan
+        default: return nil
+        }
+    }
+
+    var availableCommands: [AvailableCommand]? {
+        switch self {
+        case .availableCommandsUpdate(let commands): return commands
+        default: return nil
+        }
+    }
+
+    var currentMode: String? {
+        switch self {
+        case .currentModeUpdate(let mode): return mode
+        default: return nil
+        }
+    }
+}
+
+// MARK: - ContentBlock helpers
+
+private extension ContentBlock {
+    func toDictionary() -> [String: Any] {
+        guard let data = try? JSONEncoder().encode(self),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let dict = object as? [String: Any] else {
+            return [:]
+        }
+        return dict
+    }
+}
+
+private extension ToolCallContent {
+    func toDictionary() -> [String: Any] {
+        guard let data = try? JSONEncoder().encode(self),
+              let object = try? JSONSerialization.jsonObject(with: data),
+              let dict = object as? [String: Any] else {
+            return [:]
+        }
+        return dict
     }
 }

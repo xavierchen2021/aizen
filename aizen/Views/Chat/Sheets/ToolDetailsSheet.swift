@@ -11,6 +11,7 @@ import Foundation
 struct ToolDetailsSheet: View {
     @Environment(\.dismiss) private var dismiss
     let toolCalls: [ToolCall]
+    var agentSession: AgentSession?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -74,8 +75,8 @@ struct ToolDetailsSheet: View {
                             Text(loc.path ?? "unknown")
                                 .font(.system(size: 11, weight: .semibold))
                                 .lineLimit(1)
-                            if let start = loc.startLine {
-                                Text("L\(start)\(loc.endLine != nil ? "–\(loc.endLine!)" : "")")
+                            if let line = loc.line {
+                                Text("L\(line)")
                                     .font(.system(size: 10))
                                     .foregroundStyle(.secondary)
                             }
@@ -99,7 +100,7 @@ struct ToolDetailsSheet: View {
                 SectionHeader(title: "Text Output")
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(Array(toolCall.content.enumerated()), id: \.offset) { _, block in
-                        CompactContentBlockView(block: block)
+                        ToolCallContentView(content: block, agentSession: agentSession)
                     }
                 }
             }
@@ -130,6 +131,135 @@ struct ToolDetailsSheet: View {
 
 }
 
+// MARK: - Tool Call Content View
+
+struct ToolCallContentView: View {
+    let content: ToolCallContent
+    var agentSession: AgentSession?
+
+    var body: some View {
+        switch content {
+        case .content(let block):
+            CompactContentBlockView(block: block)
+        case .diff(let diff):
+            ToolCallDiffView(diff: diff)
+        case .terminal(let terminal):
+            TerminalOutputPreview(terminalId: terminal.terminalId, agentSession: agentSession)
+        }
+    }
+}
+
+// MARK: - Terminal Output Preview
+
+struct TerminalOutputPreview: View {
+    let terminalId: String
+    var agentSession: AgentSession?
+
+    @State private var output: String = ""
+    @State private var isRunning: Bool = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            // Header with terminal icon and status
+            HStack(spacing: 6) {
+                Image(systemName: "terminal")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+
+                Text("Terminal Output")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                if isRunning {
+                    HStack(spacing: 4) {
+                        ProgressView()
+                            .scaleEffect(0.5)
+                            .frame(width: 10, height: 10)
+                        Text("Running")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.blue)
+                    }
+                }
+            }
+
+            // Terminal-like output area
+            ScrollView([.horizontal, .vertical]) {
+                Text(output.isEmpty ? "No output yet..." : output)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(output.isEmpty ? .tertiary : .primary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 200)
+            .padding(8)
+            .background(Color(nsColor: .textBackgroundColor))
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1)
+            )
+            .cornerRadius(4)
+        }
+        .task {
+            await loadOutput()
+        }
+    }
+
+    private func loadOutput() async {
+        guard let session = agentSession else { return }
+
+        // Poll for output updates
+        for _ in 0..<60 { // Poll for up to 30 seconds
+            output = await session.getTerminalOutput(terminalId: terminalId) ?? ""
+            isRunning = await session.isTerminalRunning(terminalId: terminalId)
+
+            if !isRunning {
+                break
+            }
+
+            try? await Task.sleep(nanoseconds: 500_000_000) // 500ms
+        }
+    }
+}
+
+// MARK: - Tool Call Diff View
+
+struct ToolCallDiffView: View {
+    let diff: ToolCallDiff
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(diff.path)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+
+            ScrollView([.horizontal, .vertical]) {
+                VStack(alignment: .leading, spacing: 0) {
+                    if let oldText = diff.oldText {
+                        ForEach(oldText.split(separator: "\n", omittingEmptySubsequences: false).map(String.init), id: \.self) { line in
+                            Text("- \(line)")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.red)
+                        }
+                    }
+                    ForEach(diff.newText.split(separator: "\n", omittingEmptySubsequences: false).map(String.init), id: \.self) { line in
+                        Text("+ \(line)")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.green)
+                    }
+                }
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 200)
+            .padding(8)
+            .background(Color(nsColor: .textBackgroundColor))
+            .cornerRadius(4)
+        }
+    }
+}
+
 // MARK: - Compact Content Block View
 
 struct CompactContentBlockView: View {
@@ -157,7 +287,7 @@ struct CompactContentBlockView: View {
 
             case .resource(let content):
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(String(localized: "chat.content.resourceUri \(content.resource.uri)"))
+                    Text(String(localized: "chat.content.resourceUri \(content.resource.uri ?? "unknown")"))
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -181,62 +311,14 @@ struct CompactContentBlockView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
 
-            case .embeddedResource(let content):
+            case .resourceLink(let content):
                 Text(String(localized: "chat.content.resourceUri \(content.uri)"))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
 
-            case .diff(let content):
-                ScrollView([.horizontal, .vertical]) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        if let path = content.path {
-                            Text(String(localized: "chat.content.file \(path)"))
-                                .font(.system(size: 10))
-                                .foregroundStyle(.secondary)
-                                .padding(.bottom, 4)
-                        }
-
-                        let diffText = "--- \(content.path ?? "original")\n+++ \(content.path ?? "modified")\n\(content.oldText)\n\(content.newText)"
-                        ForEach(diffText.split(separator: "\n", omittingEmptySubsequences: false).map(String.init), id: \.self) { line in
-                            Text(line)
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(diffLineColor(for: line))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
-                    .textSelection(.enabled)
-                }
-                .frame(maxHeight: 200)
-                .padding(8)
-                .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(4)
-
-            case .terminalEmbed(let content):
-                ScrollView([.horizontal, .vertical]) {
-                    Text(content.output)
-                        .font(.system(size: 11, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(maxHeight: 200)
-                .padding(8)
-                .background(Color.black.opacity(0.8))
-                .cornerRadius(4)
-                .foregroundStyle(.white)
             }
         }
-    }
-
-    private func diffLineColor(for line: String) -> Color {
-        if line.hasPrefix("+") && !line.hasPrefix("+++") {
-            return .green
-        } else if line.hasPrefix("-") && !line.hasPrefix("---") {
-            return .red
-        } else if line.hasPrefix("@@") {
-            return .blue
-        }
-        return .primary
     }
 }
 

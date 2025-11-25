@@ -11,6 +11,24 @@ import os.log
 // ACPClientDelegate is defined in ACPRequestRouter
 typealias ACPClientDelegate = ACPRequestDelegate
 
+// MARK: - Debug Message Types
+
+enum DebugMessageDirection {
+    case outgoing
+    case incoming
+}
+
+struct DebugMessage {
+    let direction: DebugMessageDirection
+    let timestamp: Date
+    let rawData: Data
+    let method: String?
+
+    var jsonString: String? {
+        String(data: rawData, encoding: .utf8)
+    }
+}
+
 actor ACPClient {
     // MARK: - Properties
 
@@ -25,6 +43,9 @@ actor ACPClient {
 
     private let notificationContinuation: AsyncStream<JSONRPCNotification>.Continuation
     private let notificationStream: AsyncStream<JSONRPCNotification>
+
+    private var debugContinuation: AsyncStream<DebugMessage>.Continuation?
+    private var debugStream: AsyncStream<DebugMessage>?
 
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
@@ -69,6 +90,25 @@ actor ACPClient {
         notificationStream
     }
 
+    var debugMessages: AsyncStream<DebugMessage>? {
+        debugStream
+    }
+
+    func enableDebugStream() {
+        guard debugStream == nil else { return }
+        var continuation: AsyncStream<DebugMessage>.Continuation!
+        debugStream = AsyncStream { cont in
+            continuation = cont
+        }
+        debugContinuation = continuation
+    }
+
+    func disableDebugStream() {
+        debugContinuation?.finish()
+        debugContinuation = nil
+        debugStream = nil
+    }
+
     func setDelegate(_ delegate: ACPClientDelegate?) {
         self.delegate = delegate
         Task {
@@ -82,11 +122,20 @@ actor ACPClient {
 
     func initialize(
         protocolVersion: Int = 1,
-        capabilities: ClientCapabilities
+        capabilities: ClientCapabilities,
+        clientInfo: ClientInfo? = nil
     ) async throws -> InitializeResponse {
+        // Use provided clientInfo or default Aizen info
+        let info = clientInfo ?? ClientInfo(
+            name: "Aizen",
+            title: "Aizen",
+            version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+        )
+
         let request = InitializeRequest(
             protocolVersion: protocolVersion,
-            clientCapabilities: capabilities
+            clientCapabilities: capabilities,
+            clientInfo: info
         )
 
         let response = try await sendRequest(method: "initialize", params: request)
@@ -228,13 +277,8 @@ actor ACPClient {
     }
 
     func cancelSession(sessionId: SessionId) async throws {
-        let request = CancelSessionRequest(sessionId: sessionId)
-
-        let response = try await sendRequest(method: "session/cancel", params: request)
-
-        if let error = response.error {
-            throw ACPClientError.agentError(error)
-        }
+        // session/cancel is a notification per ACP spec (no response expected)
+        try await sendCancelNotification(sessionId: sessionId)
     }
 
     func loadSession(
@@ -263,7 +307,8 @@ actor ACPClient {
 
     func sendRequest<T: Encodable>(
         method: String,
-        params: T
+        params: T,
+        timeout: TimeInterval = 120.0
     ) async throws -> JSONRPCResponse {
         guard await processManager.isRunning() else {
             throw ACPClientError.processNotRunning
@@ -283,16 +328,46 @@ actor ACPClient {
             params: paramsValue
         )
 
-        return try await withCheckedThrowingContinuation { continuation in
-            Task {
-                await self.registerRequest(id: requestId, continuation: continuation)
+        return try await withRequestTimeout(seconds: timeout, requestId: requestId) {
+            try await withCheckedThrowingContinuation { continuation in
+                Task {
+                    await self.registerRequest(id: requestId, continuation: continuation)
 
-                do {
-                    try await processManager.writeMessage(request)
-                } catch {
-                    await self.failRequest(id: requestId, error: error)
+                    do {
+                        try await self.writeMessageWithDebug(request, method: method)
+                    } catch {
+                        await self.failRequest(id: requestId, error: error)
+                    }
                 }
             }
+        }
+    }
+
+    private func withRequestTimeout<T>(
+        seconds: TimeInterval,
+        requestId: RequestId,
+        operation: @escaping () async throws -> T
+    ) async throws -> T {
+        do {
+            return try await withThrowingTaskGroup(of: T.self) { group in
+                group.addTask {
+                    try await operation()
+                }
+                group.addTask {
+                    try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                    throw ACPClientError.requestTimeout
+                }
+
+                guard let result = try await group.next() else {
+                    throw ACPClientError.requestTimeout
+                }
+                group.cancelAll()
+                return result
+            }
+        } catch is ACPClientError {
+            // Clean up pending request on timeout
+            pendingRequests.removeValue(forKey: requestId)
+            throw ACPClientError.requestTimeout
         }
     }
 
@@ -314,24 +389,38 @@ actor ACPClient {
             params: paramsValue
         )
 
-        try await processManager.writeMessage(notification)
+        try await writeMessageWithDebug(notification, method: "session/cancel")
     }
 
     func terminate() async {
         await processManager.terminate()
 
         // Fail all pending requests
-        for (id, continuation) in pendingRequests {
+        for (_, continuation) in pendingRequests {
             continuation.resume(throwing: ACPClientError.processNotRunning)
         }
         pendingRequests.removeAll()
 
         notificationContinuation.finish()
+        debugContinuation?.finish()
+        debugContinuation = nil
+        debugStream = nil
     }
 
     // MARK: - Private Methods
 
     private func handleMessage(data: Data) async {
+        // Emit to debug stream if enabled
+        if let continuation = debugContinuation {
+            let method = extractMethod(from: data)
+            continuation.yield(DebugMessage(
+                direction: .incoming,
+                timestamp: Date(),
+                rawData: data,
+                method: method
+            ))
+        }
+
         do {
             let message = try decoder.decode(ACPMessage.self, from: data)
 
@@ -386,7 +475,7 @@ actor ACPClient {
 
     private func sendSuccessResponse(requestId: RequestId, result: AnyCodable) async throws {
         let response = JSONRPCResponse(id: requestId, result: result, error: nil)
-        try await processManager.writeMessage(response)
+        try await writeMessageWithDebug(response, method: nil)
     }
 
     private func sendErrorResponse(requestId: RequestId, code: Int, message: String) async throws {
@@ -395,7 +484,7 @@ actor ACPClient {
             code: code,
             message: message
         )
-        try await processManager.writeMessage(errorResponse)
+        try await writeMessageWithDebug(errorResponse, method: nil)
     }
 
     private func handleTermination(exitCode: Int32) async {
@@ -439,5 +528,27 @@ actor ACPClient {
         case .notification(let notification):
             return "notification \(notification.method)"
         }
+    }
+
+    private func extractMethod(from data: Data) -> String? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        return json["method"] as? String
+    }
+
+    private func writeMessageWithDebug<T: Encodable>(_ message: T, method: String? = nil) async throws {
+        // Emit to debug stream if enabled
+        if let continuation = debugContinuation {
+            if let data = try? encoder.encode(message) {
+                continuation.yield(DebugMessage(
+                    direction: .outgoing,
+                    timestamp: Date(),
+                    rawData: data,
+                    method: method
+                ))
+            }
+        }
+        try await processManager.writeMessage(message)
     }
 }

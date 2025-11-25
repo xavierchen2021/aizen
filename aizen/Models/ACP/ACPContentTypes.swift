@@ -17,7 +17,7 @@ struct Annotations: Codable {
 
     enum CodingKeys: String, CodingKey {
         case audience
-        case lastModified = "last_modified"
+        case lastModified
         case priority, _meta
     }
 }
@@ -81,6 +81,12 @@ struct TextContent: Codable {
 
     enum CodingKeys: String, CodingKey {
         case type, text, annotations, _meta
+    }
+
+    init(text: String, annotations: Annotations? = nil, _meta: [String: AnyCodable]? = nil) {
+        self.text = text
+        self.annotations = annotations
+        self._meta = _meta
     }
 }
 
@@ -202,3 +208,20 @@ struct ResourceContent: Codable {
     }
 }
 
+extension EmbeddedResourceType {
+    /// Convenience accessor for the resource URI regardless of variant
+    var uri: String? {
+        switch self {
+        case .text(let contents): return contents.uri
+        case .blob(let contents): return contents.uri
+        }
+    }
+
+    /// Convenience accessor for embedded text contents
+    var text: String? {
+        switch self {
+        case .text(let contents): return contents.text
+        case .blob: return nil
+        }
+    }
+}

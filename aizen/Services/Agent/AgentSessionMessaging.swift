@@ -26,11 +26,14 @@ extension AgentSession {
         // Clear tool calls from previous message
         toolCalls = []
 
+        // Mark any incomplete agent message as complete before starting new conversation turn
+        markLastMessageComplete()
+
         // Build content blocks array
         var contentBlocks: [ContentBlock] = []
 
         // Add text content
-        contentBlocks.append(.text(TextContent(text: content)))
+        contentBlocks.append(.text(TextContent(text: content, annotations: nil, _meta: nil)))
 
         // Add attachments as resource blocks
         for attachmentURL in attachments {
@@ -44,7 +47,12 @@ extension AgentSession {
 
         // Send to agent - notifications will arrive asynchronously
         // Tool calls will mark messages complete, or if no tools, the final chunk completes it
-        _ = try await client.sendPrompt(sessionId: sessionId, content: contentBlocks)
+        let response = try await client.sendPrompt(sessionId: sessionId, content: contentBlocks)
+
+        // Mark the agent message as complete when the prompt finishes
+        markLastMessageComplete()
+
+        logger.debug("Prompt completed with stop reason: \(response.stopReason.rawValue)")
     }
 
     /// Cancel the current prompt turn
@@ -97,22 +105,32 @@ extension AgentSession {
         if isTextFile {
             // Read as text
             let text = try String(contentsOf: url, encoding: .utf8)
-            let resourceContent = ResourceContent(
-                uri: url.absoluteString,
-                mimeType: mimeType,
+            let textResource = EmbeddedTextResourceContents(
                 text: text,
-                blob: nil
+                mimeType: mimeType,
+                uri: url.absoluteString,
+                _meta: nil
+            )
+            let resourceContent = ResourceContent(
+                resource: .text(textResource),
+                annotations: nil,
+                _meta: nil
             )
             return .resource(resourceContent)
         } else {
             // Read as binary and base64 encode
             let data = try Data(contentsOf: url)
             let base64 = data.base64EncodedString()
-            let resourceContent = ResourceContent(
-                uri: url.absoluteString,
+            let blobResource = EmbeddedBlobResourceContents(
+                blob: base64,
                 mimeType: mimeType,
-                text: nil,
-                blob: base64
+                uri: url.absoluteString,
+                _meta: nil
+            )
+            let resourceContent = ResourceContent(
+                resource: .blob(blobResource),
+                annotations: nil,
+                _meta: nil
             )
             return .resource(resourceContent)
         }
@@ -157,13 +175,21 @@ extension AgentSession {
         }
     }
 
-    func addAgentMessage(_ content: String, toolCalls: [ToolCall] = [], isComplete: Bool = true, startTime: Date? = nil, requestId: String? = nil) {
+    func addAgentMessage(
+        _ content: String,
+        toolCalls: [ToolCall] = [],
+        contentBlocks: [ContentBlock] = [],
+        isComplete: Bool = true,
+        startTime: Date? = nil,
+        requestId: String? = nil
+    ) {
         let newMessage = MessageItem(
             id: UUID().uuidString,
             role: .agent,
             content: content,
             timestamp: Date(),
             toolCalls: toolCalls,
+            contentBlocks: contentBlocks,
             isComplete: isComplete,
             startTime: startTime,
             executionTime: nil,

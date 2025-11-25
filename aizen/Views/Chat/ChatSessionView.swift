@@ -58,7 +58,8 @@ struct ChatSessionView: View {
                         renderInlineMarkdown: viewModel.renderInlineMarkdown,
                         onToolTap: { toolCall in
                             selectedToolCall = toolCall
-                        }
+                        },
+                        agentSession: viewModel.currentAgentSession
                     )
 
                     Spacer(minLength: 0)
@@ -153,7 +154,7 @@ struct ChatSessionView: View {
             }
         }
         .sheet(item: $selectedToolCall) { toolCall in
-            ToolDetailsSheet(toolCalls: [toolCall])
+            ToolDetailsSheet(toolCalls: [toolCall], agentSession: viewModel.currentAgentSession)
         }
         .sheet(isPresented: Binding(
             get: {
