@@ -22,7 +22,14 @@ struct SplitTerminalView: View {
     @State private var paneTitles: [String: String] = [:]
     @State private var layoutSaveWorkItem: DispatchWorkItem?
     @State private var focusSaveWorkItem: DispatchWorkItem?
+    @State private var showCloseConfirmation = false
+    @State private var pendingCloseAction: CloseAction = .pane
     private let logger = Logger.terminal
+
+    private enum CloseAction {
+        case pane
+        case tab
+    }
 
     init(worktree: Worktree, session: TerminalSession, sessionManager: TerminalSessionManager, isSelected: Bool = false) {
         self.worktree = worktree
@@ -68,6 +75,17 @@ struct SplitTerminalView: View {
             .onDisappear {
                 layoutSaveWorkItem?.cancel()
                 focusSaveWorkItem?.cancel()
+            }
+            .alert(
+                String(localized: "terminal.close.confirmTitle", defaultValue: "Close Terminal?"),
+                isPresented: $showCloseConfirmation
+            ) {
+                Button(String(localized: "terminal.close.cancel", defaultValue: "Cancel"), role: .cancel) {}
+                Button(String(localized: "terminal.close.confirm", defaultValue: "Close"), role: .destructive) {
+                    executeCloseAction()
+                }
+            } message: {
+                Text(String(localized: "terminal.close.confirmMessage", defaultValue: "A process is still running in this terminal. Are you sure you want to close it?"))
             }
     }
 
@@ -179,8 +197,39 @@ struct SplitTerminalView: View {
     }
 
     private func closePane() {
-        guard layout.allPaneIds().count > 1 else { return }
+        let paneCount = layout.allPaneIds().count
 
+        if paneCount == 1 {
+            // Single pane - close the entire tab
+            if let sessionId = session.id,
+               sessionManager.paneHasRunningProcess(for: sessionId, paneId: focusedPaneId) {
+                pendingCloseAction = .tab
+                showCloseConfirmation = true
+            } else {
+                closeTab()
+            }
+        } else {
+            // Multiple panes - close just this pane
+            if let sessionId = session.id,
+               sessionManager.paneHasRunningProcess(for: sessionId, paneId: focusedPaneId) {
+                pendingCloseAction = .pane
+                showCloseConfirmation = true
+            } else {
+                executeClosePaneOnly()
+            }
+        }
+    }
+
+    private func executeCloseAction() {
+        switch pendingCloseAction {
+        case .pane:
+            executeClosePaneOnly()
+        case .tab:
+            closeTab()
+        }
+    }
+
+    private func executeClosePaneOnly() {
         // Remove terminal from manager
         if let sessionId = session.id {
             sessionManager.removeTerminal(for: sessionId, paneId: focusedPaneId)
@@ -191,6 +240,27 @@ struct SplitTerminalView: View {
             // Focus first available pane
             if let firstPane = layout.allPaneIds().first {
                 focusedPaneId = firstPane
+            }
+        }
+    }
+
+    private func closeTab() {
+        // Remove all terminals for this session
+        if let sessionId = session.id {
+            for paneId in layout.allPaneIds() {
+                sessionManager.removeTerminal(for: sessionId, paneId: paneId)
+            }
+        }
+
+        // Delete the terminal session
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak session] in
+            guard let session = session,
+                  let context = session.managedObjectContext else { return }
+            context.delete(session)
+            do {
+                try context.save()
+            } catch {
+                Logger.terminal.error("Failed to delete terminal session: \(error.localizedDescription)")
             }
         }
     }

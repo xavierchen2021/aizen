@@ -369,6 +369,11 @@ struct WorktreeDetailView: View {
             .onReceive(NotificationCenter.default.publisher(for: .fileSearchShortcut)) { _ in
                 showFileSearch()
             }
+            .onReceive(NotificationCenter.default.publisher(for: .openFileInEditor)) { notification in
+                if let path = notification.userInfo?["path"] as? String {
+                    openFile(path)
+                }
+            }
     }
 
     var body: some View {

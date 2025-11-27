@@ -26,4 +26,9 @@ extension Notification.Name {
 
     /// Posted when Command+P is pressed to open file search
     static let fileSearchShortcut = Notification.Name("FileSearchShortcut")
+
+    // MARK: - File Operations
+
+    /// Posted when a file should be opened in the editor (from tool calls, etc.)
+    static let openFileInEditor = Notification.Name("OpenFileInEditor")
 }

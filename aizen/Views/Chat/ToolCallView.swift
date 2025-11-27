@@ -7,18 +7,22 @@
 
 import SwiftUI
 import Foundation
+import CodeEditLanguages
+import CodeEditSourceEditor
 
 struct ToolCallView: View {
     let toolCall: ToolCall
     var onOpenDetails: ((ToolCall) -> Void)? = nil
     var agentSession: AgentSession? = nil
+    var onOpenInEditor: ((String) -> Void)? = nil
 
     @State private var isExpanded: Bool
 
-    init(toolCall: ToolCall, onOpenDetails: ((ToolCall) -> Void)? = nil, agentSession: AgentSession? = nil) {
+    init(toolCall: ToolCall, onOpenDetails: ((ToolCall) -> Void)? = nil, agentSession: AgentSession? = nil, onOpenInEditor: ((String) -> Void)? = nil) {
         self.toolCall = toolCall
         self.onOpenDetails = onOpenDetails
         self.agentSession = agentSession
+        self.onOpenInEditor = onOpenInEditor
         // Default expanded for edit, diff, and terminal content
         let shouldExpand = toolCall.kind == .edit || toolCall.kind == .delete ||
             toolCall.content.contains { content in
@@ -74,11 +78,46 @@ struct ToolCallView: View {
             if isExpanded && hasContent {
                 inlineContentView
                     .transition(.opacity.combined(with: .move(edge: .top)))
+
+                // Open in Editor button for file operations
+                if let path = filePath, onOpenInEditor != nil {
+                    Button(action: { onOpenInEditor?(path) }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "doc.text")
+                            Text("Open in Editor")
+                        }
+                        .font(.system(size: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(.blue)
+                    .padding(.top, 4)
+                }
             }
         }
         .background(backgroundColor)
         .cornerRadius(3)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - File Path Extraction
+
+    private var filePath: String? {
+        // Check locations first
+        if let path = toolCall.locations?.first?.path {
+            return path
+        }
+        // For diff content, extract path
+        for content in toolCall.content {
+            if case .diff(let diff) = content {
+                return diff.path
+            }
+        }
+        // For file operations, title often contains the path
+        if [.read, .edit, .delete, .move].contains(toolCall.kind),
+           toolCall.title.contains("/") {
+            return toolCall.title
+        }
+        return nil
     }
 
     // MARK: - Inline Content
@@ -112,17 +151,7 @@ struct ToolCallView: View {
     private func inlineContentBlock(_ block: ContentBlock) -> some View {
         switch block {
         case .text(let textContent):
-            ScrollView {
-                Text(textContent.text)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundColor(.primary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(maxHeight: 150)
-            .padding(6)
-            .background(Color(nsColor: .textBackgroundColor))
-            .cornerRadius(4)
+            HighlightedTextContentView(text: textContent.text, filePath: filePath)
         default:
             EmptyView()
         }
@@ -250,6 +279,90 @@ struct ToolCallView: View {
         return toolCall.kind.rawValue
     }
 
+}
+
+// MARK: - Highlighted Text Content View
+
+struct HighlightedTextContentView: View {
+    let text: String
+    let filePath: String?
+
+    @State private var highlightedText: AttributedString?
+    @AppStorage("editorTheme") private var editorTheme: String = "Catppuccin Mocha"
+
+    private let highlighter = TreeSitterHighlighter()
+
+    private var detectedLanguage: CodeLanguage {
+        guard let path = filePath else { return CodeLanguage.default }
+        return LanguageDetection.detectLanguage(mimeType: nil, uri: path, content: text)
+    }
+
+    private var isCodeFile: Bool {
+        guard let path = filePath else { return false }
+        return LanguageDetection.isCodeFile(mimeType: nil, uri: path)
+    }
+
+    var body: some View {
+        ScrollView {
+            Group {
+                if isCodeFile, let highlighted = highlightedText {
+                    Text(highlighted)
+                } else {
+                    Text(text)
+                        .foregroundColor(.primary)
+                }
+            }
+            .font(.system(size: 10, design: .monospaced))
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxHeight: 150)
+        .padding(6)
+        .background(Color(nsColor: .textBackgroundColor))
+        .cornerRadius(4)
+        .task(id: text) {
+            guard isCodeFile else { return }
+            await performHighlight()
+        }
+    }
+
+    private func performHighlight() async {
+        do {
+            let theme = GhosttyThemeParser.loadTheme(named: editorTheme) ?? defaultTheme()
+            let attributed = try await highlighter.highlightCode(
+                text,
+                language: detectedLanguage,
+                theme: theme
+            )
+            highlightedText = attributed
+        } catch {
+            highlightedText = nil
+        }
+    }
+
+    private func defaultTheme() -> EditorTheme {
+        let bg = NSColor(red: 0.12, green: 0.12, blue: 0.18, alpha: 1.0)
+        let fg = NSColor(red: 0.8, green: 0.84, blue: 0.96, alpha: 1.0)
+
+        return EditorTheme(
+            text: .init(color: fg),
+            insertionPoint: fg,
+            invisibles: .init(color: .systemGray),
+            background: bg,
+            lineHighlight: bg.withAlphaComponent(0.05),
+            selection: .selectedTextBackgroundColor,
+            keywords: .init(color: .systemPurple),
+            commands: .init(color: .systemBlue),
+            types: .init(color: .systemYellow),
+            attributes: .init(color: .systemRed),
+            variables: .init(color: .systemCyan),
+            values: .init(color: .systemOrange),
+            numbers: .init(color: .systemOrange),
+            strings: .init(color: .systemGreen),
+            characters: .init(color: .systemGreen),
+            comments: .init(color: .systemGray)
+        )
+    }
 }
 
 // MARK: - Content Block View

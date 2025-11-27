@@ -33,4 +33,25 @@ class TerminalSessionManager {
         let prefix = sessionId.uuidString
         terminals = terminals.filter { !$0.key.hasPrefix(prefix) }
     }
+
+    /// Check if any terminal pane has a running process (not exited)
+    @MainActor
+    func hasRunningProcess(for sessionId: UUID, paneIds: [String]) -> Bool {
+        for paneId in paneIds {
+            if let terminal = getTerminal(for: sessionId, paneId: paneId),
+               !terminal.processExited {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Check if a specific pane has a running process
+    @MainActor
+    func paneHasRunningProcess(for sessionId: UUID, paneId: String) -> Bool {
+        if let terminal = getTerminal(for: sessionId, paneId: paneId) {
+            return !terminal.processExited
+        }
+        return false
+    }
 }

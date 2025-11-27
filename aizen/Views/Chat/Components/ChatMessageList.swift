@@ -16,6 +16,7 @@ struct ChatMessageList: View {
     let onAppear: () -> Void
     let renderInlineMarkdown: (String) -> AttributedString
     var onToolTap: (ToolCall) -> Void = { _ in }
+    var onOpenFileInEditor: (String) -> Void = { _ in }
     var agentSession: AgentSession? = nil
 
     var body: some View {
@@ -32,7 +33,8 @@ struct ChatMessageList: View {
                             ToolCallView(
                                 toolCall: toolCall,
                                 onOpenDetails: { tapped in onToolTap(tapped) },
-                                agentSession: agentSession
+                                agentSession: agentSession,
+                                onOpenInEditor: onOpenFileInEditor
                             )
                             .transition(.opacity.combined(with: .move(edge: .leading)))
                         }

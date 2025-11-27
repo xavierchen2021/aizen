@@ -23,6 +23,7 @@ struct ChatSessionView: View {
     @State private var showingPermissionError = false
     @State private var permissionErrorMessage = ""
     @State private var selectedToolCall: ToolCall?
+    @State private var fileToOpenInEditor: String?
 
     init(worktree: Worktree, session: ChatSession, sessionManager: ChatSessionManager, viewContext: NSManagedObjectContext) {
         self.worktree = worktree
@@ -58,6 +59,9 @@ struct ChatSessionView: View {
                         renderInlineMarkdown: viewModel.renderInlineMarkdown,
                         onToolTap: { toolCall in
                             selectedToolCall = toolCall
+                        },
+                        onOpenFileInEditor: { path in
+                            fileToOpenInEditor = path
                         },
                         agentSession: viewModel.currentAgentSession
                     )
@@ -135,6 +139,15 @@ struct ChatSessionView: View {
         }
         .onDisappear {
             NotificationCenter.default.post(name: .chatViewDidDisappear, object: nil)
+        }
+        .onChange(of: fileToOpenInEditor) { path in
+            guard let path = path else { return }
+            NotificationCenter.default.post(
+                name: .openFileInEditor,
+                object: nil,
+                userInfo: ["path": path]
+            )
+            fileToOpenInEditor = nil
         }
         .sheet(isPresented: Binding(
             get: { viewModel.needsAuth },
