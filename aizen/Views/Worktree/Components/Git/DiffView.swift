@@ -161,6 +161,7 @@ struct DiffView: NSViewRepresentable {
         enum DiffRow {
             case fileHeader(path: String)
             case line(DiffLine)
+            case lazyLine(rawIndex: Int)
         }
 
         func setupScrollObserver(for scrollView: NSScrollView) {
@@ -242,7 +243,7 @@ struct DiffView: NSViewRepresentable {
             tableView?.reloadData()
         }
 
-        // Parse raw diff output
+        // Parse raw diff output - store raw lines for lazy parsing
         func parseAndReload(diffOutput: String, fontSize: Double, fontFamily: String) {
             let newHash = diffOutput.hashValue ^ fontSize.hashValue ^ fontFamily.hashValue
             guard newHash != lastDataHash else { return }
@@ -254,87 +255,122 @@ struct DiffView: NSViewRepresentable {
             let font = NSFont(name: fontFamily, size: fontSize) ?? NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
             rowHeight = ceil(font.ascender - font.descender + font.leading) + 6
 
-            rows = parseDiff(diffOutput)
+            // Store raw lines for lazy parsing
+            rawLines = []
+            rawLines.reserveCapacity(diffOutput.count / 40)
+            diffOutput.enumerateLines { [self] line, _ in
+                rawLines.append(line)
+            }
+
+            // Clear parsed cache
+            parsedRows.removeAll(keepingCapacity: true)
+            fileRowIndices.removeAll()
+            rows.removeAll(keepingCapacity: true)
+
+            // Build row metadata quickly (just count and identify file headers)
+            buildRowMetadata()
+
             tableView?.reloadData()
         }
 
-        private func parseDiff(_ output: String) -> [DiffRow] {
-            var result: [DiffRow] = []
-            var lineCounter = 0
+        private var rawLines: [String] = []
+        private var parsedRows: [Int: DiffRow] = [:] // Lazy cache
+
+        private func buildRowMetadata() {
+            var rowIndex = 0
             var oldNum = 0
             var newNum = 0
-            fileRowIndices.removeAll()
 
-            for line in output.components(separatedBy: .newlines) {
+            for (lineIndex, line) in rawLines.enumerated() {
+                let firstChar = line.first
+
                 if line.hasPrefix("diff --git ") {
                     continue
                 } else if line.hasPrefix("+++ b/") {
                     let path = String(line.dropFirst(6))
                     if showFileHeaders {
-                        fileRowIndices[path] = result.count  // Store index before appending
-                        result.append(.fileHeader(path: path))
+                        fileRowIndices[path] = rowIndex
+                        rows.append(.fileHeader(path: path))
+                        rowIndex += 1
                     }
-                } else if line.hasPrefix("--- ") || line.hasPrefix("index ") || line.hasPrefix("new file") || line.hasPrefix("deleted file") {
+                } else if firstChar == "-" && line.hasPrefix("--- ") {
                     continue
-                } else if line.hasPrefix("@@") {
+                } else if line.hasPrefix("index ") || line.hasPrefix("new file") || line.hasPrefix("deleted file") {
+                    continue
+                } else if firstChar == "@" || firstChar == "+" || firstChar == "-" || firstChar == " " {
+                    // Just add placeholder - will parse on demand
+                    rows.append(.lazyLine(rawIndex: lineIndex))
+                    rowIndex += 1
+                }
+            }
+        }
+
+        // Parse a single line on demand
+        private func parseLineAt(_ rawIndex: Int) -> DiffLine {
+            let line = rawLines[rawIndex]
+            let firstChar = line.first
+
+            // Need to calculate line numbers by scanning backwards
+            var oldNum = 0
+            var newNum = 0
+
+            // Find the most recent @@ header to get starting line numbers
+            for i in stride(from: rawIndex - 1, through: 0, by: -1) {
+                let prevLine = rawLines[i]
+                if prevLine.hasPrefix("@@") {
                     // Parse hunk header
-                    let parts = line.components(separatedBy: " ")
-                    for part in parts {
-                        if part.hasPrefix("-") && !part.hasPrefix("---") {
-                            let numStr = part.dropFirst().components(separatedBy: ",").first ?? ""
-                            if let num = Int(numStr) {
-                                oldNum = max(0, num - 1)
-                            }
-                        } else if part.hasPrefix("+") && !part.hasPrefix("+++") {
-                            let numStr = part.dropFirst().components(separatedBy: ",").first ?? ""
-                            if let num = Int(numStr) {
-                                newNum = max(0, num - 1)
-                            }
+                    if let minusRange = prevLine.range(of: "-") {
+                        let afterMinus = prevLine[minusRange.upperBound...]
+                        if let end = afterMinus.firstIndex(where: { $0 == "," || $0 == " " }),
+                           let num = Int(afterMinus[..<end]) {
+                            oldNum = num
                         }
                     }
-                    result.append(.line(DiffLine(
-                        lineNumber: lineCounter,
-                        oldLineNumber: nil,
-                        newLineNumber: nil,
-                        content: line,
-                        type: .header
-                    )))
-                    lineCounter += 1
-                } else if line.hasPrefix("+") {
-                    newNum += 1
-                    result.append(.line(DiffLine(
-                        lineNumber: lineCounter,
-                        oldLineNumber: nil,
-                        newLineNumber: String(newNum),
-                        content: String(line.dropFirst()),
-                        type: .added
-                    )))
-                    lineCounter += 1
-                } else if line.hasPrefix("-") {
-                    oldNum += 1
-                    result.append(.line(DiffLine(
-                        lineNumber: lineCounter,
-                        oldLineNumber: String(oldNum),
-                        newLineNumber: nil,
-                        content: String(line.dropFirst()),
-                        type: .deleted
-                    )))
-                    lineCounter += 1
-                } else if line.hasPrefix(" ") {
-                    oldNum += 1
-                    newNum += 1
-                    result.append(.line(DiffLine(
-                        lineNumber: lineCounter,
-                        oldLineNumber: String(oldNum),
-                        newLineNumber: String(newNum),
-                        content: String(line.dropFirst()),
-                        type: .context
-                    )))
-                    lineCounter += 1
+                    if let plusRange = prevLine.range(of: " +") {
+                        let afterPlus = prevLine[plusRange.upperBound...]
+                        if let end = afterPlus.firstIndex(where: { $0 == "," || $0 == " " }),
+                           let num = Int(afterPlus[..<end]) {
+                            newNum = num
+                        }
+                    }
+                    // Count lines between header and current
+                    for j in (i + 1)..<rawIndex {
+                        let scanLine = rawLines[j]
+                        let scanChar = scanLine.first
+                        if scanChar == "+" { newNum += 1 }
+                        else if scanChar == "-" { oldNum += 1 }
+                        else if scanChar == " " { oldNum += 1; newNum += 1 }
+                    }
+                    break
                 }
             }
 
-            return result
+            if firstChar == "@" {
+                return DiffLine(lineNumber: rawIndex, oldLineNumber: nil, newLineNumber: nil, content: line, type: .header)
+            } else if firstChar == "+" {
+                return DiffLine(lineNumber: rawIndex, oldLineNumber: nil, newLineNumber: String(newNum + 1), content: String(line.dropFirst()), type: .added)
+            } else if firstChar == "-" {
+                return DiffLine(lineNumber: rawIndex, oldLineNumber: String(oldNum + 1), newLineNumber: nil, content: String(line.dropFirst()), type: .deleted)
+            } else {
+                return DiffLine(lineNumber: rawIndex, oldLineNumber: String(oldNum + 1), newLineNumber: String(newNum + 1), content: String(line.dropFirst()), type: .context)
+            }
+        }
+
+        func getRow(at index: Int) -> DiffRow {
+            guard index < rows.count else { return .line(DiffLine(lineNumber: 0, oldLineNumber: nil, newLineNumber: nil, content: "", type: .context)) }
+
+            switch rows[index] {
+            case .lazyLine(let rawIndex):
+                // Parse on demand and cache
+                if let cached = parsedRows[index] {
+                    return cached
+                }
+                let parsed = DiffRow.line(parseLineAt(rawIndex))
+                parsedRows[index] = parsed
+                return parsed
+            default:
+                return rows[index]
+            }
         }
 
         func numberOfRows(in tableView: NSTableView) -> Int {
@@ -346,7 +382,7 @@ struct DiffView: NSViewRepresentable {
             switch rows[row] {
             case .fileHeader:
                 return rowHeight + 12
-            case .line:
+            case .line, .lazyLine:
                 return rowHeight
             }
         }
@@ -354,11 +390,14 @@ struct DiffView: NSViewRepresentable {
         func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
             guard row < rows.count else { return nil }
 
-            switch rows[row] {
+            let resolvedRow = getRow(at: row)
+            switch resolvedRow {
             case .fileHeader(let path):
                 return makeFileHeaderCell(path: path, tableView: tableView)
             case .line(let diffLine):
                 return makeLineCell(diffLine: diffLine, tableView: tableView)
+            case .lazyLine:
+                return nil // Should never happen after getRow
             }
         }
 
@@ -366,11 +405,14 @@ struct DiffView: NSViewRepresentable {
             guard row < rows.count else { return nil }
             let rowView = DiffNSRowView()
 
-            switch rows[row] {
+            let resolvedRow = getRow(at: row)
+            switch resolvedRow {
             case .fileHeader:
                 rowView.lineType = nil
             case .line(let diffLine):
                 rowView.lineType = diffLine.type
+            case .lazyLine:
+                rowView.lineType = .context
             }
 
             return rowView

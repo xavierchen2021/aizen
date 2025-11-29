@@ -412,8 +412,8 @@ struct WorktreeDetailView: View {
     private func setupGitMonitoring() async {
         guard let worktreePath = worktree.path else { return }
 
-        // Initial load
-        gitRepositoryService.reloadStatus()
+        // Update service path and reload status
+        gitRepositoryService.updateWorktreePath(worktreePath)
 
         // Setup file system watcher (now a regular class, non-blocking)
         let watcher = GitIndexWatcher(worktreePath: worktreePath)

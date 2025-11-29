@@ -49,5 +49,11 @@ struct GitChangesOverlayContainer: View {
             onPull: gitOperations.pull,
             onPush: gitOperations.push
         )
+        .onAppear {
+            if let path = worktree.path {
+                gitRepositoryService.updateWorktreePath(path)
+            }
+            gitRepositoryService.reloadStatus()
+        }
     }
 }

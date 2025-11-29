@@ -15,7 +15,7 @@ class GitRepositoryService: ObservableObject {
     @Published private(set) var currentStatus: GitStatus = .empty
     @Published private(set) var isOperationPending = false
 
-    private let worktreePath: String
+    private(set) var worktreePath: String
 
     // Shared executor (reused across all operations)
     private let executor: GitCommandExecutor
@@ -250,6 +250,13 @@ class GitRepositoryService: ObservableObject {
             guard let self = self else { return }
             await self.reloadStatusInternal()
         }
+    }
+
+    func updateWorktreePath(_ newPath: String) {
+        guard newPath != worktreePath else { return }
+        worktreePath = newPath
+        currentStatus = .empty
+        reloadStatus()
     }
 
     // MARK: - Private Methods

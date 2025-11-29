@@ -69,6 +69,29 @@ actor GitCommandExecutor {
             var hasResumed = false
             let resumeLock = NSLock()
 
+            // Collect output data as it comes in to avoid pipe buffer deadlock
+            var outputData = Data()
+            var errorData = Data()
+            let dataLock = NSLock()
+
+            pipe.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                if !data.isEmpty {
+                    dataLock.lock()
+                    outputData.append(data)
+                    dataLock.unlock()
+                }
+            }
+
+            errorPipe.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                if !data.isEmpty {
+                    dataLock.lock()
+                    errorData.append(data)
+                    dataLock.unlock()
+                }
+            }
+
             // Set up timeout
             let timer = DispatchSource.makeTimerSource(queue: .global())
             timer.schedule(deadline: .now() + timeout)
@@ -78,6 +101,8 @@ actor GitCommandExecutor {
 
                 if !hasResumed {
                     hasResumed = true
+                    pipe.fileHandleForReading.readabilityHandler = nil
+                    errorPipe.fileHandleForReading.readabilityHandler = nil
                     process.terminate()
                     continuation.resume(throwing: GitError.timeout)
                 }
@@ -86,7 +111,18 @@ actor GitCommandExecutor {
             timer.resume()
 
             // Set up async termination handler
-            process.terminationHandler = { process in
+            process.terminationHandler = { [dataLock] process in
+                // Read any remaining data
+                pipe.fileHandleForReading.readabilityHandler = nil
+                errorPipe.fileHandleForReading.readabilityHandler = nil
+
+                dataLock.lock()
+                let remainingOut = pipe.fileHandleForReading.readDataToEndOfFile()
+                outputData.append(remainingOut)
+                let remainingErr = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                errorData.append(remainingErr)
+                dataLock.unlock()
+
                 resumeLock.lock()
                 defer { resumeLock.unlock() }
 
@@ -96,12 +132,10 @@ actor GitCommandExecutor {
                 hasResumed = true
                 timer.cancel()
 
-                // Read output asynchronously (on Process's internal queue)
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-
-                let stdout = String(data: data, encoding: .utf8) ?? ""
+                dataLock.lock()
+                let stdout = String(data: outputData, encoding: .utf8) ?? ""
                 let stderr = String(data: errorData, encoding: .utf8) ?? ""
+                dataLock.unlock()
 
                 if process.terminationStatus != 0 {
                     let errorMessage = stderr.isEmpty ? String(localized: "error.git.unknownError") : stderr
@@ -120,6 +154,8 @@ actor GitCommandExecutor {
                 if !hasResumed {
                     hasResumed = true
                     timer.cancel()
+                    pipe.fileHandleForReading.readabilityHandler = nil
+                    errorPipe.fileHandleForReading.readabilityHandler = nil
                     continuation.resume(throwing: error)
                 }
             }

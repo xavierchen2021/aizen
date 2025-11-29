@@ -140,33 +140,72 @@ struct GitChangesOverlayView: View {
 
     private func loadFullDiff() async {
         let executor = GitCommandExecutor()
-        var output = ""
+        let path = worktreePath
 
-        // Get diff for tracked files (--no-pager to avoid hanging)
-        if let headDiff = try? await executor.executeGit(arguments: ["--no-pager", "diff", "HEAD"], at: worktreePath) {
-            output = headDiff
-        } else if let basicDiff = try? await executor.executeGit(arguments: ["--no-pager", "diff"], at: worktreePath) {
-            output = basicDiff
+        guard !path.isEmpty else { return }
+
+        // Try git diff HEAD first - this handles most cases including staged new files
+        if let headDiff = try? await executor.executeGit(arguments: ["--no-pager", "diff", "HEAD"], at: path),
+           !headDiff.isEmpty {
+            diffOutput = headDiff
+            return
         }
 
-        // Add untracked files as "new file" diffs
-        for file in gitStatus.untrackedFiles {
-            let fullPath = (worktreePath as NSString).appendingPathComponent(file)
-            if let content = try? String(contentsOfFile: fullPath, encoding: .utf8) {
-                let lines = content.components(separatedBy: .newlines)
-                var fileDiff = "diff --git a/\(file) b/\(file)\n"
-                fileDiff += "new file mode 100644\n"
-                fileDiff += "--- /dev/null\n"
-                fileDiff += "+++ b/\(file)\n"
-                fileDiff += "@@ -0,0 +1,\(lines.count) @@\n"
-                for line in lines {
-                    fileDiff += "+\(line)\n"
+        // Fallback: cached diff (for repos with commits but no HEAD changes)
+        if let cachedDiff = try? await executor.executeGit(arguments: ["--no-pager", "diff", "--cached"], at: path),
+           !cachedDiff.isEmpty {
+            diffOutput = cachedDiff
+            return
+        }
+
+        // Fallback: unstaged diff
+        if let unstagedDiff = try? await executor.executeGit(arguments: ["--no-pager", "diff"], at: path),
+           !unstagedDiff.isEmpty {
+            diffOutput = unstagedDiff
+            return
+        }
+
+        // Last resort: get untracked files only
+        if let untrackedOutput = try? await executor.executeGit(
+            arguments: ["ls-files", "--others", "--exclude-standard"],
+            at: path
+        ) {
+            let untrackedFiles = untrackedOutput
+                .split(separator: "\n")
+                .filter { !$0.isEmpty }
+
+            if !untrackedFiles.isEmpty {
+                var output = ""
+                for file in untrackedFiles.prefix(50) { // Limit to 50 files for performance
+                    output += Self.buildFileDiff(file: String(file), basePath: path)
                 }
-                output += fileDiff
+                diffOutput = output
             }
         }
+    }
 
-        diffOutput = output
+    private static func buildFileDiff(file: String, basePath: String) -> String {
+        let fullPath = (basePath as NSString).appendingPathComponent(file)
+        guard let data = FileManager.default.contents(atPath: fullPath),
+              let content = String(data: data, encoding: .utf8) else {
+            return ""
+        }
+
+        let lines = content.split(separator: "\n", omittingEmptySubsequences: false)
+        var parts = [String]()
+        parts.reserveCapacity(lines.count + 5)
+
+        parts.append("diff --git a/\(file) b/\(file)")
+        parts.append("new file mode 100644")
+        parts.append("--- /dev/null")
+        parts.append("+++ b/\(file)")
+        parts.append("@@ -0,0 +1,\(lines.count) @@")
+
+        for line in lines {
+            parts.append("+\(line)")
+        }
+
+        return parts.joined(separator: "\n") + "\n"
     }
 
     private func reloadDiff() {
