@@ -77,6 +77,8 @@ struct DiffView: NSViewRepresentable {
         tableView.allowsColumnResizing = false
         tableView.allowsColumnSelection = false
         tableView.rowSizeStyle = .custom
+        tableView.gridStyleMask = []
+        tableView.gridColor = .clear
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("diff"))
         column.resizingMask = .autoresizingMask
@@ -87,7 +89,7 @@ struct DiffView: NSViewRepresentable {
 
         scrollView.documentView = tableView
         scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
+        scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.backgroundColor = .clear
         scrollView.drawsBackground = false
@@ -586,14 +588,14 @@ private class LineCellView: NSTableCellView {
             lineNumBg.leadingAnchor.constraint(equalTo: leadingAnchor),
             lineNumBg.topAnchor.constraint(equalTo: topAnchor),
             lineNumBg.bottomAnchor.constraint(equalTo: bottomAnchor),
-            lineNumBg.widthAnchor.constraint(equalToConstant: 96),
+            lineNumBg.widthAnchor.constraint(equalToConstant: 56),
 
-            oldNumLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            oldNumLabel.widthAnchor.constraint(equalToConstant: 36),
+            oldNumLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            oldNumLabel.widthAnchor.constraint(equalToConstant: 22),
             oldNumLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
 
-            newNumLabel.leadingAnchor.constraint(equalTo: oldNumLabel.trailingAnchor, constant: 8),
-            newNumLabel.widthAnchor.constraint(equalToConstant: 36),
+            newNumLabel.leadingAnchor.constraint(equalTo: oldNumLabel.trailingAnchor, constant: 4),
+            newNumLabel.widthAnchor.constraint(equalToConstant: 22),
             newNumLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
 
             markerLabel.leadingAnchor.constraint(equalTo: lineNumBg.trailingAnchor, constant: 4),
