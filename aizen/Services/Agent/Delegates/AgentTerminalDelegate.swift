@@ -53,6 +53,18 @@ actor AgentTerminalDelegate {
     private var terminals: [String: TerminalState] = [:]
     private var releasedOutputs: [String: ReleasedTerminalOutput] = [:]
 
+    // MARK: - Private Cleanup
+
+    /// Clean up pipe handlers to prevent file handle leaks
+    private func cleanupProcessPipes(_ process: Process) {
+        if let outputPipe = process.standardOutput as? Pipe {
+            outputPipe.fileHandleForReading.readabilityHandler = nil
+        }
+        if let errorPipe = process.standardError as? Pipe {
+            errorPipe.fileHandleForReading.readabilityHandler = nil
+        }
+    }
+
     // MARK: - Initialization
 
     init() {}
@@ -239,6 +251,9 @@ actor AgentTerminalDelegate {
             state.process.waitUntilExit()
         }
 
+        // Clean up pipe handlers to prevent leaks
+        cleanupProcessPipes(state.process)
+
         // Wake up any waiters
         let exitCode = Int(state.process.terminationStatus)
         for waiter in state.exitWaiters {
@@ -266,6 +281,8 @@ actor AgentTerminalDelegate {
                 state.process.terminate()
                 state.process.waitUntilExit()
             }
+            // Clean up pipe handlers to prevent leaks
+            cleanupProcessPipes(state.process)
             // Wake up any waiters
             let exitCode = Int(state.process.terminationStatus)
             for waiter in state.exitWaiters {
@@ -427,8 +444,13 @@ actor AgentTerminalDelegate {
         let pipe = Pipe()
         process.standardOutput = pipe
 
+        defer {
+            try? pipe.fileHandleForReading.close()
+        }
+
         do {
             try process.run()
+            process.waitUntilExit()
             let data = pipe.fileHandleForReading.availableData
             if let path = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) {
                 if !path.isEmpty && FileManager.default.fileExists(atPath: path) {

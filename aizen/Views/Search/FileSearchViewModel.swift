@@ -28,7 +28,7 @@ class FileSearchViewModel: ObservableObject {
 
     private func setupSearchDebounce() {
         $searchQuery
-            .debounce(for: .milliseconds(50), scheduler: DispatchQueue.main)
+            .debounce(for: .milliseconds(200), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.performSearch()
             }

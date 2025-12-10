@@ -286,7 +286,8 @@ struct FileSearchWindowContent: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(viewModel.results.enumerated()), id: \.element.id) { index, result in
+                    ForEach(viewModel.results.indices, id: \.self) { index in
+                        let result = viewModel.results[index]
                         resultRow(result: result, index: index, isSelected: index == viewModel.selectedIndex)
                             .id(index)
                     }

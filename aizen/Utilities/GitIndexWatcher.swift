@@ -159,8 +159,14 @@ class GitIndexWatcher {
                 process.currentDirectoryURL = URL(fileURLWithPath: self.worktreePath)
 
                 let pipe = Pipe()
+                let errorPipe = Pipe()
                 process.standardOutput = pipe
-                process.standardError = Pipe()
+                process.standardError = errorPipe
+
+                defer {
+                    try? pipe.fileHandleForReading.close()
+                    try? errorPipe.fileHandleForReading.close()
+                }
 
                 do {
                     try process.run()

@@ -81,7 +81,8 @@ struct SessionTabsScrollView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 4) {
                         if selectedTab == "chat" && !chatSessions.isEmpty {
-                            ForEach(Array(chatSessions.enumerated()), id: \.element.id) { index, session in
+                            ForEach(chatSessions) { session in
+                                let index = chatSessions.firstIndex(where: { $0.id == session.id }) ?? 0
                                 chatTabView(session: session)
                                     .id(session.id)
                                     .contextMenu {
@@ -89,7 +90,8 @@ struct SessionTabsScrollView: View {
                                     }
                             }
                         } else if selectedTab == "terminal" && !terminalSessions.isEmpty {
-                            ForEach(Array(terminalSessions.enumerated()), id: \.element.id) { index, session in
+                            ForEach(terminalSessions) { session in
+                                let index = terminalSessions.firstIndex(where: { $0.id == session.id }) ?? 0
                                 terminalTabView(session: session)
                                     .id(session.id)
                                     .contextMenu {

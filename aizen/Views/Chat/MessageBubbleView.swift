@@ -87,8 +87,8 @@ struct MessageBubbleView: View {
                         }
                         if !attachmentBlocks.isEmpty {
                             HStack(spacing: 6) {
-                                ForEach(Array(attachmentBlocks.enumerated()), id: \.offset) { _, block in
-                                    AttachmentChipView(block: block)
+                                ForEach(attachmentBlocks.indices, id: \.self) { index in
+                                    AttachmentChipView(block: attachmentBlocks[index])
                                 }
                             }
                             .padding(.top, 4)
@@ -184,11 +184,15 @@ struct MessageBubbleView: View {
         }
     }
 
-    private func formatTimestamp(_ date: Date) -> String {
+    private static let timestampFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
         formatter.dateStyle = .none
-        return formatter.string(from: date)
+        return formatter
+    }()
+
+    private func formatTimestamp(_ date: Date) -> String {
+        Self.timestampFormatter.string(from: date)
     }
 
     private func formatExecutionTime(_ seconds: TimeInterval) -> String {

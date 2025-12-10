@@ -173,6 +173,14 @@ struct InlineDiffView: View {
         let n = b.count
         guard m > 0 && n > 0 else { return [] }
 
+        // For very large diffs, use a simpler line-by-line comparison
+        // to avoid O(n²) memory/time complexity
+        let maxLCSSize = 1000
+        if m * n > maxLCSSize * maxLCSSize {
+            // Fallback: simple line matching for very large diffs
+            return simpleLCS(a, b)
+        }
+
         var dp = Array(repeating: Array(repeating: 0, count: n + 1), count: m + 1)
 
         for i in 1...m {
@@ -200,6 +208,12 @@ struct InlineDiffView: View {
             }
         }
         return result.reversed()
+    }
+
+    /// Simple LCS for large files - only matches exact consecutive sequences
+    private func simpleLCS(_ a: [String], _ b: [String]) -> [String] {
+        var bSet = Set(b)
+        return a.filter { bSet.contains($0) }
     }
 
     private func generateHunks(edits: [(type: InlineDiffLineType, content: String)], contextLines: Int) -> [InlineDiffLine] {

@@ -240,11 +240,12 @@ struct TerminalContentView: View {
     }
 
     private func lineColor(for line: String) -> Color {
-        if line.contains("error") || line.contains("Error") || line.contains("ERROR") {
+        let lowercased = line.lowercased()
+        if lowercased.contains("error") {
             return .red
-        } else if line.contains("warning") || line.contains("Warning") || line.contains("WARN") {
+        } else if lowercased.contains("warn") {
             return .yellow
-        } else if line.contains("success") || line.contains("Success") || line.contains("✓") {
+        } else if lowercased.contains("success") || line.contains("✓") {
             return .green
         } else if line.hasPrefix("$") || line.hasPrefix(">") {
             return .cyan

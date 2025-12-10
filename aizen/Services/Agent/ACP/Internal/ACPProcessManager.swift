@@ -134,6 +134,15 @@ actor ACPProcessManager {
     }
 
     func terminate() {
+        // Clear readability handlers first
+        stdoutPipe?.fileHandleForReading.readabilityHandler = nil
+        stderrPipe?.fileHandleForReading.readabilityHandler = nil
+
+        // Close file handles explicitly
+        try? stdinPipe?.fileHandleForWriting.close()
+        try? stdoutPipe?.fileHandleForReading.close()
+        try? stderrPipe?.fileHandleForReading.close()
+
         process?.terminate()
         process = nil
 
@@ -195,9 +204,12 @@ actor ACPProcessManager {
 
         stderr.readabilityHandler = { handle in
             let data = handle.availableData
-            if !data.isEmpty {
-                // Discard stderr output
+            guard !data.isEmpty else {
+                // EOF or pipe closed - clean up handler
+                handle.readabilityHandler = nil
+                return
             }
+            // Discard stderr output
         }
     }
 

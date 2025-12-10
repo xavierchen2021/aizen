@@ -11,6 +11,11 @@ class AudioRecordingService: ObservableObject {
     private var durationTimer: Timer?
     private var levelTimer: Timer?
 
+    deinit {
+        durationTimer?.invalidate()
+        levelTimer?.invalidate()
+    }
+
     // MARK: - Recording Control
 
     func startRecording() {

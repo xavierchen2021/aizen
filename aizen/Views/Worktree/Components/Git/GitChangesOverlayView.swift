@@ -51,14 +51,24 @@ struct GitChangesOverlayView: View {
     private let minLeftPanelWidth: CGFloat = 200
     private let maxLeftPanelWidth: CGFloat = 400
 
+    @State private var cachedChangedFiles: [String] = []
+
     private var allChangedFiles: [String] {
-        let files = Set(
-            gitStatus.stagedFiles +
-            gitStatus.modifiedFiles +
-            gitStatus.untrackedFiles +
-            gitStatus.conflictedFiles
-        )
-        return Array(files).sorted()
+        cachedChangedFiles
+    }
+
+    private func updateChangedFilesCache() {
+        var files = Set<String>()
+        files.formUnion(gitStatus.stagedFiles)
+        files.formUnion(gitStatus.modifiedFiles)
+        files.formUnion(gitStatus.untrackedFiles)
+        files.formUnion(gitStatus.conflictedFiles)
+
+        let sortedFiles = files.sorted()
+        // Only update if changed
+        if sortedFiles != cachedChangedFiles {
+            cachedChangedFiles = sortedFiles
+        }
     }
 
     var body: some View {
@@ -90,6 +100,10 @@ struct GitChangesOverlayView: View {
         }
         .onAppear {
             reviewManager.load(for: worktreePath)
+            updateChangedFilesCache()
+        }
+        .onChange(of: gitStatus) { _ in
+            updateChangedFilesCache()
         }
         .onChange(of: reviewManager.comments.count) { newCount in
             // Auto-show panel when first comment is added

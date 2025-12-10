@@ -57,6 +57,10 @@ actor BinaryAgentInstaller {
         let errorPipe = Pipe()
         process.standardError = errorPipe
 
+        defer {
+            try? errorPipe.fileHandleForReading.close()
+        }
+
         try process.run()
         process.waitUntilExit()
 
@@ -93,6 +97,10 @@ actor BinaryAgentInstaller {
 
         let errorPipe = Pipe()
         process.standardError = errorPipe
+
+        defer {
+            try? errorPipe.fileHandleForReading.close()
+        }
 
         try process.run()
         process.waitUntilExit()

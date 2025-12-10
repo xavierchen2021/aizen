@@ -25,38 +25,28 @@ struct MarkdownRenderedView: View {
     let content: String
     var isStreaming: Bool = false
 
-    @State private var cachedBlocks: [MarkdownBlock]?
+    @State private var cachedBlocks: [MarkdownBlock] = []
     @State private var cachedContentHash: Int = 0
-
-    private var renderedBlocks: [MarkdownBlock] {
-        // Return cached if content hash matches (faster than full string comparison)
-        let contentHash = content.hashValue
-        if let cached = cachedBlocks, cachedContentHash == contentHash {
-            return cached
-        }
-        let document = Document(parsing: content)
-        return convertMarkdown(document)
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(renderedBlocks) { block in
+            ForEach(cachedBlocks) { block in
                 MarkdownBlockView(
                     block: block,
                     isStreaming: isStreaming,
-                    isLast: block.id == renderedBlocks.last?.id
+                    isLast: block.id == cachedBlocks.last?.id
                 )
             }
         }
         .onAppear {
-            updateCache()
+            updateCacheIfNeeded()
         }
         .onChange(of: content) { _ in
-            updateCache()
+            updateCacheIfNeeded()
         }
     }
 
-    private func updateCache() {
+    private func updateCacheIfNeeded() {
         let contentHash = content.hashValue
         guard cachedContentHash != contentHash else { return }
         let document = Document(parsing: content)

@@ -20,9 +20,11 @@ class AgentRouter: ObservableObject {
         }
     }
 
+    private var metadataObserver: NSObjectProtocol?
+
     init() {
         // Listen for agent metadata changes
-        NotificationCenter.default.addObserver(
+        metadataObserver = NotificationCenter.default.addObserver(
             forName: .agentMetadataDidChange,
             object: nil,
             queue: .main
@@ -36,6 +38,12 @@ class AgentRouter: ObservableObject {
         Task {
             await self.rebuildLookupCache()
             await self.initializeSessions()
+        }
+    }
+
+    deinit {
+        if let observer = metadataObserver {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 
