@@ -27,11 +27,13 @@ struct WorktreeDetailView: View {
     @AppStorage("showBrowserTab") private var showBrowserTab = true
     @AppStorage("showOpenInApp") private var showOpenInApp = true
     @AppStorage("showGitStatus") private var showGitStatus = true
+    @AppStorage("showXcodeBuild") private var showXcodeBuild = true
     @AppStorage("zenModeEnabled") private var zenModeEnabled = false
     @AppStorage("terminalThemeName") private var terminalThemeName = "Catppuccin Mocha"
     @State private var selectedTab = "chat"
     @State private var lastOpenedApp: DetectedApp?
     @StateObject private var gitRepositoryService: GitRepositoryService
+    @StateObject private var xcodeBuildManager = XcodeBuildManager()
     @State private var gitIndexWatcher: GitIndexWatcher?
     @State private var fileSearchWindowController: FileSearchWindowController?
     @State private var fileToOpenFromSearch: String?
@@ -208,6 +210,21 @@ struct WorktreeDetailView: View {
 
     @ToolbarContentBuilder
     var trailingToolbarItems: some ToolbarContent {
+        // Xcode build button (only if fully loaded and ready)
+        if showXcodeBuild, xcodeBuildManager.isReady {
+            ToolbarItem {
+                XcodeBuildButton(buildManager: xcodeBuildManager, worktree: worktree)
+            }
+
+            if #available(macOS 26.0, *) {
+                ToolbarSpacer(.fixed)
+            } else {
+                ToolbarItem(placement: .automatic) {
+                    Spacer().frame(width: 8).fixedSize()
+                }
+            }
+        }
+
         if showOpenInApp {
             ToolbarItem {
                 OpenInAppButton(
@@ -331,18 +348,40 @@ struct WorktreeDetailView: View {
             .onReceive(NotificationCenter.default.publisher(for: .sendMessageToChat)) { notification in
                 handleSendMessageToChat(notification)
             }
+            .onReceive(NotificationCenter.default.publisher(for: .switchToChat)) { notification in
+                handleSwitchToChat(notification)
+            }
     }
 
     private func handleSendMessageToChat(_ notification: Notification) {
         guard let userInfo = notification.userInfo,
-              let sessionId = userInfo["sessionId"] as? UUID,
-              let message = userInfo["message"] as? String else {
+              let sessionId = userInfo["sessionId"] as? UUID else {
             return
         }
 
-        // Store review comments as an attachment (user can add context before sending)
-        let attachment = ChatAttachment.reviewComments(message)
+        // Get attachment from notification (new way) or create from message (legacy way)
+        let attachment: ChatAttachment
+        if let existingAttachment = userInfo["attachment"] as? ChatAttachment {
+            attachment = existingAttachment
+        } else if let message = userInfo["message"] as? String {
+            attachment = .reviewComments(message)
+        } else {
+            return
+        }
+
+        // Store attachment (user can add context before sending)
         ChatSessionManager.shared.setPendingAttachments([attachment], for: sessionId)
+
+        // Switch to chat tab and select the session
+        selectedTab = "chat"
+        viewModel.selectedChatSessionId = sessionId
+    }
+
+    private func handleSwitchToChat(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let sessionId = userInfo["sessionId"] as? UUID else {
+            return
+        }
 
         // Switch to chat tab and select the session
         selectedTab = "chat"
@@ -385,6 +424,7 @@ struct WorktreeDetailView: View {
             }
             .task(id: worktree.id) {
                 await setupGitMonitoring()
+                xcodeBuildManager.detectProject(at: worktree.path ?? "")
                 loadTabState()
                 validateSelectedTab()
             }

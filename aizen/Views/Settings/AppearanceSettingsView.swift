@@ -7,6 +7,7 @@ struct AppearanceSettingsView: View {
     @AppStorage("showBrowserTab") private var showBrowserTab = true
     @AppStorage("showOpenInApp") private var showOpenInApp = true
     @AppStorage("showGitStatus") private var showGitStatus = true
+    @AppStorage("showXcodeBuild") private var showXcodeBuild = true
 
     var body: some View {
         Form {
@@ -32,6 +33,9 @@ struct AppearanceSettingsView: View {
 
                 Toggle("Git Status", isOn: $showGitStatus)
                     .help("Hide the Git status indicator showing changes")
+
+                Toggle("Xcode Build", isOn: $showXcodeBuild)
+                    .help("Show Xcode build button for projects with .xcodeproj or .xcworkspace")
             } header: {
                 Text("Toolbar Items")
             }

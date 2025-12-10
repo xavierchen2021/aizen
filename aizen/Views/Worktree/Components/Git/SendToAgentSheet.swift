@@ -9,9 +9,25 @@ import SwiftUI
 
 struct SendToAgentSheet: View {
     let worktree: Worktree?
-    let commentsMarkdown: String
+    let attachment: ChatAttachment
     let onDismiss: () -> Void
     let onSend: () -> Void
+
+    /// Convenience initializer for backwards compatibility with markdown strings
+    init(worktree: Worktree?, commentsMarkdown: String, onDismiss: @escaping () -> Void, onSend: @escaping () -> Void) {
+        self.worktree = worktree
+        self.attachment = .reviewComments(commentsMarkdown)
+        self.onDismiss = onDismiss
+        self.onSend = onSend
+    }
+
+    /// Primary initializer with explicit attachment type
+    init(worktree: Worktree?, attachment: ChatAttachment, onDismiss: @escaping () -> Void, onSend: @escaping () -> Void) {
+        self.worktree = worktree
+        self.attachment = attachment
+        self.onDismiss = onDismiss
+        self.onSend = onSend
+    }
 
     @State private var selectedOption: SendOption?
 
@@ -199,13 +215,15 @@ struct SendToAgentSheet: View {
     }
 
     private func sendToExistingChat(sessionId: UUID) {
-        Task { @MainActor in
-            guard let agentSession = ChatSessionManager.shared.getAgentSession(for: sessionId) else {
-                return
-            }
+        // Set pending attachment and switch to chat
+        ChatSessionManager.shared.setPendingAttachments([attachment], for: sessionId)
 
-            try? await agentSession.sendMessage(content: commentsMarkdown)
-        }
+        // Post notification to switch to the chat
+        NotificationCenter.default.post(
+            name: .switchToChat,
+            object: nil,
+            userInfo: ["sessionId": sessionId]
+        )
     }
 
     private func createNewChatAndSend(agentId: String) {
@@ -223,13 +241,13 @@ struct SendToAgentSheet: View {
         do {
             try context.save()
 
-            // Post notification to switch to the new chat and send message
+            // Post notification to switch to the new chat with attachment
             NotificationCenter.default.post(
                 name: .sendMessageToChat,
                 object: nil,
                 userInfo: [
                     "sessionId": session.id as Any,
-                    "message": commentsMarkdown
+                    "attachment": attachment
                 ]
             )
         } catch {
@@ -242,4 +260,5 @@ struct SendToAgentSheet: View {
 
 extension Notification.Name {
     static let sendMessageToChat = Notification.Name("sendMessageToChat")
+    static let switchToChat = Notification.Name("switchToChat")
 }

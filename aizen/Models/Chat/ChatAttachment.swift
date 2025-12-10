@@ -10,6 +10,7 @@ import Foundation
 enum ChatAttachment: Identifiable, Hashable {
     case file(URL)
     case reviewComments(String) // markdown content
+    case buildError(String) // build error log
 
     var id: String {
         switch self {
@@ -17,6 +18,8 @@ enum ChatAttachment: Identifiable, Hashable {
             return "file-\(url.absoluteString)"
         case .reviewComments(let content):
             return "review-\(content.hashValue)"
+        case .buildError(let content):
+            return "build-\(content.hashValue)"
         }
     }
 
@@ -26,6 +29,8 @@ enum ChatAttachment: Identifiable, Hashable {
             return url.lastPathComponent
         case .reviewComments:
             return "Review Comments"
+        case .buildError:
+            return "Build Error"
         }
     }
 
@@ -45,16 +50,20 @@ enum ChatAttachment: Identifiable, Hashable {
             }
         case .reviewComments:
             return "text.bubble"
+        case .buildError:
+            return "xmark.circle.fill"
         }
     }
 
     // For sending to agent - returns the content to include in message
     var contentForAgent: String? {
         switch self {
-        case .file(let url):
+        case .file:
             // Files are handled separately by the agent protocol
             return nil
         case .reviewComments(let content):
+            return content
+        case .buildError(let content):
             return content
         }
     }

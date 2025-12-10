@@ -32,16 +32,16 @@ extension AgentSession {
         // Build content blocks array
         var contentBlocks: [ContentBlock] = []
 
-        // Collect review comments to prepend to message
-        var reviewCommentsText = ""
+        // Collect text-based attachments to prepend to message
+        var prependedContent = ""
         for attachment in attachments {
-            if case .reviewComments(let markdown) = attachment {
-                reviewCommentsText += markdown + "\n\n"
+            if let attachmentContent = attachment.contentForAgent {
+                prependedContent += attachmentContent + "\n\n"
             }
         }
 
-        // Add text content (with review comments prepended if any)
-        let fullContent = reviewCommentsText.isEmpty ? content : reviewCommentsText + content
+        // Add text content (with attachments prepended if any)
+        let fullContent = prependedContent.isEmpty ? content : prependedContent + content
         contentBlocks.append(.text(TextContent(text: fullContent, annotations: nil, _meta: nil)))
 
         // Add file attachments as resource blocks

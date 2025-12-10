@@ -139,6 +139,8 @@ struct ChatAttachmentChip: View {
             return .secondary
         case .reviewComments:
             return .blue
+        case .buildError:
+            return .red
         }
     }
 
@@ -148,6 +150,8 @@ struct ChatAttachmentChip: View {
             return Color(NSColor.controlBackgroundColor)
         case .reviewComments:
             return Color.blue.opacity(0.15)
+        case .buildError:
+            return Color.red.opacity(0.15)
         }
     }
 
@@ -158,6 +162,8 @@ struct ChatAttachmentChip: View {
             InputAttachmentDetailView(url: url)
         case .reviewComments(let content):
             ReviewCommentsDetailView(content: content)
+        case .buildError(let content):
+            BuildErrorDetailView(content: content)
         }
     }
 }
@@ -189,6 +195,41 @@ struct ReviewCommentsDetailView: View {
             }
         }
         .frame(width: 500, height: 400)
+    }
+}
+
+// MARK: - Build Error Detail View
+
+struct BuildErrorDetailView: View {
+    let content: String
+    @Environment(\.dismiss) var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.red)
+                Text("Build Error")
+                    .font(.headline)
+                Spacer()
+                Button("Done") {
+                    dismiss()
+                }
+            }
+            .padding()
+
+            Divider()
+
+            ScrollView {
+                Text(content)
+                    .font(.system(size: 11, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+            }
+            .background(Color(nsColor: .textBackgroundColor))
+        }
+        .frame(width: 600, height: 400)
     }
 }
 
