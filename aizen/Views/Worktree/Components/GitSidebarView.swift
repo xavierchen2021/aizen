@@ -2,8 +2,6 @@ import SwiftUI
 
 struct GitSidebarView: View {
     let worktreePath: String
-    let repository: Repository
-    let repositoryManager: RepositoryManager
     let onClose: () -> Void
 
     // Single source of truth - no bindings, no optimistic updates
@@ -14,21 +12,14 @@ struct GitSidebarView: View {
     // Callbacks for operations
     var onStageFile: (String) -> Void
     var onUnstageFile: (String) -> Void
-    var onStageAll: (@escaping () -> Void) -> Void  // Now takes completion callback
+    var onStageAll: (@escaping () -> Void) -> Void
     var onUnstageAll: () -> Void
     var onCommit: (String) -> Void
     var onAmendCommit: (String) -> Void
     var onCommitWithSignoff: (String) -> Void
-    var onSwitchBranch: (String) -> Void
-    var onCreateBranch: (String) -> Void
-    var onFetch: () -> Void
-    var onPull: () -> Void
-    var onPush: () -> Void
     var onFileClick: (String) -> Void
 
     @State private var commitMessage: String = ""
-    @State private var selectedBranchInfo: BranchInfo?
-    @State private var showingBranchPicker: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -57,42 +48,18 @@ struct GitSidebarView: View {
 
             // Commit section
             GitCommitSection(
-                repository: repository,
-                repositoryManager: repositoryManager,
                 gitStatus: gitStatus,
                 isOperationPending: isOperationPending,
                 commitMessage: $commitMessage,
-                selectedBranchInfo: $selectedBranchInfo,
-                showingBranchPicker: $showingBranchPicker,
                 onCommit: onCommit,
                 onAmendCommit: onAmendCommit,
                 onCommitWithSignoff: onCommitWithSignoff,
-                onStageAll: onStageAll,
-                onFetch: onFetch,
-                onPull: onPull,
-                onPush: onPush
+                onStageAll: onStageAll
             )
             .padding(12)
         }
         .frame(maxHeight: .infinity)
-        .background(.ultraThinMaterial)
         .animation(nil, value: gitStatus)
-        .sheet(isPresented: $showingBranchPicker) {
-            BranchSelectorView(
-                repository: repository,
-                repositoryManager: repositoryManager,
-                selectedBranch: $selectedBranchInfo,
-                allowCreation: true,
-                onCreateBranch: { branchName in
-                    onCreateBranch(branchName)
-                }
-            )
-        }
-        .onChange(of: selectedBranchInfo) { newBranch in
-            if let branch = newBranch {
-                onSwitchBranch(branch.name)
-            }
-        }
     }
 
     private var hasUnstagedChanges: Bool {
@@ -105,8 +72,6 @@ struct GitSidebarView: View {
 #Preview {
     GitSidebarView(
         worktreePath: "/path/to/worktree",
-        repository: Repository(),
-        repositoryManager: RepositoryManager(viewContext: PersistenceController.preview.container.viewContext),
         onClose: {},
         gitStatus: GitStatus(
             stagedFiles: ["src/main.swift", "src/views/GitSidebarView.swift"],
@@ -128,11 +93,6 @@ struct GitSidebarView: View {
         onCommit: { _ in },
         onAmendCommit: { _ in },
         onCommitWithSignoff: { _ in },
-        onSwitchBranch: { _ in },
-        onCreateBranch: { _ in },
-        onFetch: {},
-        onPull: {},
-        onPush: {},
         onFileClick: { _ in }
     )
 }

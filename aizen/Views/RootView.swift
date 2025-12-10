@@ -12,6 +12,7 @@ struct RootView: View {
     let context: NSManagedObjectContext
 
     @State private var gitChangesContext: GitChangesContext?
+    @State private var gitPanelController: GitPanelWindowController?
     @StateObject private var repositoryManager: RepositoryManager
 
     init(context: NSManagedObjectContext) {
@@ -20,39 +21,42 @@ struct RootView: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            ContentView(
-                context: context,
-                repositoryManager: repositoryManager,
-                gitChangesContext: $gitChangesContext
-            )
-            .sheet(item: $gitChangesContext) { context in
-                if let repository = context.worktree.repository, !context.worktree.isDeleted {
-                    GitChangesOverlayContainer(
-                        worktree: context.worktree,
-                        repository: repository,
-                        repositoryManager: repositoryManager,
-                        gitRepositoryService: context.service,
-                        showingGitChanges: Binding(
-                            get: { gitChangesContext != nil },
-                            set: { if !$0 { gitChangesContext = nil } }
-                        )
-                    )
-                    .frame(
-                        minWidth: max(900, geometry.size.width - 100),
-                        idealWidth: geometry.size.width - 40,
-                        minHeight: max(500, geometry.size.height - 100),
-                        idealHeight: geometry.size.height - 40
-                    )
-                }
+        ContentView(
+            context: context,
+            repositoryManager: repositoryManager,
+            gitChangesContext: $gitChangesContext
+        )
+        .onChange(of: gitChangesContext) { newContext in
+            if let context = newContext, !context.worktree.isDeleted {
+                // Close existing window if any
+                gitPanelController?.close()
+
+                // Create and show new window
+                gitPanelController = GitPanelWindowController(
+                    context: context,
+                    repositoryManager: repositoryManager,
+                    onClose: {
+                        gitChangesContext = nil
+                        gitPanelController = nil
+                    }
+                )
+                gitPanelController?.showWindow(nil)
+            } else if newContext == nil {
+                // Close window when context is cleared
+                gitPanelController?.close()
+                gitPanelController = nil
             }
         }
     }
 }
 
 // Context for git changes sheet
-struct GitChangesContext: Identifiable {
+struct GitChangesContext: Identifiable, Equatable {
     let id = UUID()
     let worktree: Worktree
     let service: GitRepositoryService
+
+    static func == (lhs: GitChangesContext, rhs: GitChangesContext) -> Bool {
+        lhs.id == rhs.id
+    }
 }

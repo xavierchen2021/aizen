@@ -27,7 +27,6 @@ struct ReviewCommentsPanel: View {
                 footerButtons
             }
         }
-        .background(Color(NSColor.windowBackgroundColor))
     }
 
     private var header: some View {

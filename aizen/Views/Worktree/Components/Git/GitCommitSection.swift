@@ -1,64 +1,16 @@
 import SwiftUI
 
 struct GitCommitSection: View {
-    let repository: Repository
-    let repositoryManager: RepositoryManager
     let gitStatus: GitStatus
     let isOperationPending: Bool
     @Binding var commitMessage: String
-    @Binding var selectedBranchInfo: BranchInfo?
-    @Binding var showingBranchPicker: Bool
     let onCommit: (String) -> Void
     let onAmendCommit: (String) -> Void
     let onCommitWithSignoff: (String) -> Void
     let onStageAll: (@escaping () -> Void) -> Void
-    let onFetch: () -> Void
-    let onPull: () -> Void
-    let onPush: () -> Void
 
     var body: some View {
         VStack(spacing: 8) {
-            // Branch row
-            HStack {
-                // Branch selector (clickable with arrow)
-                Button {
-                    showingBranchPicker = true
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.triangle.branch")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.secondary)
-
-                        Text("\(repositoryName) / \(gitStatus.currentBranch)")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .buttonStyle(.plain)
-
-                Spacer()
-
-                HStack(spacing: 8) {
-                    // Show different buttons based on git status
-                    if gitStatus.aheadCount > 0 && gitStatus.behindCount > 0 {
-                        // Both ahead and behind - show pull/push combined button
-                        pullPushCombinedButton
-                    } else if gitStatus.aheadCount > 0 {
-                        // Only ahead - show push button
-                        pushButton
-                    } else {
-                        // Default - show fetch button only
-                        fetchButton
-                    }
-                }
-            }
-
             // Commit message
             ZStack(alignment: .topLeading) {
                 if commitMessage.isEmpty {
@@ -83,145 +35,6 @@ struct GitCommitSection: View {
             // Commit button menu
             commitButtonMenu
         }
-    }
-
-    private var repositoryName: String {
-        repository.name ?? "repo"
-    }
-
-    private var pullPushCombinedButton: some View {
-        HStack(spacing: 0) {
-            Button {
-                onPull()
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.down")
-                        .font(.system(size: 9))
-                    Text("(\(gitStatus.behindCount))")
-                        .font(.system(size: 10, weight: .medium))
-                }
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-
-            Rectangle()
-                .fill(Color.accentColor.opacity(0.3))
-                .frame(width: 1, height: 16)
-
-            Button {
-                onPush()
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 9))
-                    Text("(\(gitStatus.aheadCount))")
-                        .font(.system(size: 10, weight: .medium))
-                }
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-
-            Rectangle()
-                .fill(Color.accentColor.opacity(0.3))
-                .frame(width: 1, height: 16)
-
-            gitActionsMenu
-        }
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.accentColor.opacity(0.12))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(Color.accentColor.opacity(0.3), lineWidth: 1)
-        )
-    }
-
-    private var pushButton: some View {
-        HStack(spacing: 0) {
-            Button {
-                onPush()
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 9))
-                    Text("Push")
-                        .font(.system(size: 11))
-                    Text("(\(gitStatus.aheadCount))")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-
-            Rectangle()
-                .fill(Color.accentColor.opacity(0.3))
-                .frame(width: 1, height: 16)
-
-            gitActionsMenu
-        }
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.accentColor.opacity(0.12))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(Color.accentColor.opacity(0.3), lineWidth: 1)
-        )
-    }
-
-    private var fetchButton: some View {
-        HStack(spacing: 0) {
-            Button {
-                onFetch()
-            } label: {
-                Text("Fetch")
-                    .font(.system(size: 11))
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-
-            Rectangle()
-                .fill(Color.accentColor.opacity(0.3))
-                .frame(width: 1, height: 16)
-
-            gitActionsMenu
-        }
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.accentColor.opacity(0.12))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(Color.accentColor.opacity(0.3), lineWidth: 1)
-        )
-    }
-
-    private var gitActionsMenu: some View {
-        Menu {
-            Button("Fetch") {
-                onFetch()
-            }
-            Button("Pull") {
-                onPull()
-            }
-            Button("Push") {
-                onPush()
-            }
-        } label: {
-            Image(systemName: "chevron.down")
-                .font(.system(size: 8))
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .padding(.horizontal, 4)
-        .padding(.vertical, 4)
-        .frame(width: 20)
     }
 
     private var commitButtonMenu: some View {
