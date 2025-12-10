@@ -84,23 +84,24 @@ class GhosttyInputHandler {
         }
 
         // Normal key event - no IME involvement
+        // Call ghostty_surface_key directly (like Ghostty does) to avoid
+        // potential issues with Swift wrapper conversions dropping events
         var keyEvent = event.ghosttyKeyEvent(action)
 
         // Set text field if we have printable characters
+        // Control characters (< 0x20) are encoded by Ghostty itself
         if let chars = event.ghosttyCharacters,
            let codepoint = chars.utf8.first,
            codepoint >= 0x20 {
             chars.withCString { textPtr in
                 keyEvent.text = textPtr
                 keyEvent.composing = false
-                surface.sendKeyEvent(Ghostty.Input.KeyEvent(cValue: keyEvent)!)
+                ghostty_surface_key(surface.unsafeCValue, keyEvent)
             }
         } else {
             keyEvent.text = nil
             keyEvent.composing = false
-            if let inputEvent = Ghostty.Input.KeyEvent(cValue: keyEvent) {
-                surface.sendKeyEvent(inputEvent)
-            }
+            ghostty_surface_key(surface.unsafeCValue, keyEvent)
         }
     }
 
