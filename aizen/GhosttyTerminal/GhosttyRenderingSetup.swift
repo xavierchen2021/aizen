@@ -99,18 +99,16 @@ class GhosttyRenderingSetup {
                 surfaceConfig.command = UnsafePointer(cmd)
                 Self.logger.info("Using tmux persistence for pane: \(paneId)")
             }
-        } else {
-            // Let Ghostty handle shell integration
-            surfaceConfig.command = nil
+        }
 
-            // Set initial_input if command provided (for presets)
-            if let command = command, !command.isEmpty {
-                let inputWithNewline = command + "\n"
-                if let input = strdup(inputWithNewline) {
-                    initialInputPtr = input
-                    surfaceConfig.initial_input = UnsafePointer(input)
-                    Self.logger.info("Setting initial_input for preset: \(command)")
-                }
+        // Set initial_input if command provided (for presets)
+        // Works for both tmux and non-tmux modes
+        if let command = command, !command.isEmpty {
+            let inputWithNewline = command + "\n"
+            if let input = strdup(inputWithNewline) {
+                initialInputPtr = input
+                surfaceConfig.initial_input = UnsafePointer(input)
+                Self.logger.info("Setting initial_input for preset: \(command)")
             }
         }
 
