@@ -47,6 +47,9 @@ actor AgentVersionChecker {
         switch actualInstallMethod {
         case .npm(let package):
             info = await checkNpmVersion(package: package, agentPath: agentPath)
+        case .uv:
+            // For uv packages, just get version from --version flag
+            info = await checkBinaryVersion(agentPath: agentPath)
         case .githubRelease(let repo, _):
             info = await checkGithubVersion(repo: repo, agentPath: agentPath)
         default:
@@ -154,6 +157,17 @@ actor AgentVersionChecker {
         return nil
     }
 
+    /// Check binary version (for uv packages - just current version, no latest check)
+    private func checkBinaryVersion(agentPath: String?) async -> AgentVersionInfo {
+        let currentVersion = await getCurrentBinaryVersion(agentPath: agentPath)
+        return AgentVersionInfo(
+            current: currentVersion,
+            latest: nil,
+            isOutdated: false,
+            updateAvailable: false
+        )
+    }
+
     /// Check GitHub release version
     private func checkGithubVersion(repo: String, agentPath: String?) async -> AgentVersionInfo {
         // Get current version from binary
@@ -232,10 +246,10 @@ actor AgentVersionChecker {
 
     /// Extract version number from version string
     private func extractVersionNumber(from output: String) -> String? {
-        // Match semantic version pattern (e.g., "1.2.3" or "v1.2.3")
-        let pattern = #"v?(\d+\.\d+\.\d+)"#
+        // Match version pattern with 2 or 3 parts (e.g., "1.2", "1.2.3", "v1.2.3")
+        let pattern = #"v?(\d+\.\d+(?:\.\d+)?)"#
         if let range = output.range(of: pattern, options: .regularExpression),
-           let match = output[range].firstMatch(of: /v?(\d+\.\d+\.\d+)/) {
+           let match = output[range].firstMatch(of: /v?(\d+\.\d+(?:\.\d+)?)/) {
             return String(match.1)
         }
         return nil

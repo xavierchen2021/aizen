@@ -31,6 +31,9 @@ struct aizenApp: App {
         // This makes terminal shells use system locale instead of macOS AppleLanguages
         setenv("GHOSTTY_MAC_LAUNCH_SOURCE", "app", 1)
 
+        // Preload shell environment in background (speeds up agent session start)
+        ShellEnvironment.preloadEnvironment()
+
         // Initialize Sparkle updater
         updaterController = SPUStandardUpdaterController(
             startingUpdater: true,

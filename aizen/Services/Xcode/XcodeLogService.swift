@@ -68,6 +68,111 @@ actor XcodeLogService {
         }
     }
 
+    // MARK: - Log Streaming via log command (for Mac apps)
+
+    private var macLogProcess: Process?
+
+    func startStreamingForMacApp(bundleId: String, processName: String) -> AsyncStream<String> {
+        stopMacLogStreamSync()
+        isStreamingFlag = true
+
+        return AsyncStream { [weak self] continuation in
+            guard let self = self else {
+                continuation.finish()
+                return
+            }
+
+            Task {
+                await self.runMacLogStream(bundleId: bundleId, processName: processName, continuation: continuation)
+            }
+        }
+    }
+
+    private func runMacLogStream(bundleId: String, processName: String, continuation: AsyncStream<String>.Continuation) async {
+        let process = Process()
+
+        let predicate = "(subsystem BEGINSWITH '\(bundleId)') OR (process == '\(processName)') OR (processImagePath CONTAINS '\(processName)')"
+
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/log")
+        process.arguments = [
+            "stream",
+            "--predicate", predicate,
+            "--style", "compact",
+            "--level", "debug"
+        ]
+
+        continuation.yield("[os_log] Streaming unified logs for \(bundleId)...")
+        continuation.yield("[os_log] Predicate: \(predicate)")
+        continuation.yield("---")
+
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
+        process.standardError = outputPipe
+
+        let outputHandle = outputPipe.fileHandleForReading
+
+        do {
+            try process.run()
+            self.macLogProcess = process
+            logger.info("Started Mac log streaming for \(bundleId)")
+
+            await withTaskCancellationHandler {
+                await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                    process.terminationHandler = { _ in
+                        cont.resume()
+                    }
+
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        while process.isRunning {
+                            let data = outputHandle.availableData
+                            if data.isEmpty {
+                                Thread.sleep(forTimeInterval: 0.1)
+                                continue
+                            }
+
+                            if let text = String(data: data, encoding: .utf8) {
+                                let lines = text.components(separatedBy: "\n").filter { !$0.isEmpty }
+                                for line in lines {
+                                    continuation.yield(line)
+                                }
+                            }
+                        }
+
+                        let remainingData = outputHandle.readDataToEndOfFile()
+                        if let text = String(data: remainingData, encoding: .utf8), !text.isEmpty {
+                            let lines = text.components(separatedBy: "\n").filter { !$0.isEmpty }
+                            for line in lines {
+                                continuation.yield(line)
+                            }
+                        }
+                    }
+                }
+            } onCancel: {
+                process.terminate()
+            }
+
+            logger.info("Mac log streaming ended for \(bundleId)")
+        } catch {
+            logger.error("Failed to start Mac log streaming: \(error.localizedDescription)")
+            continuation.yield("Error: Failed to start Mac log streaming - \(error.localizedDescription)")
+        }
+
+        continuation.finish()
+        self.macLogProcess = nil
+    }
+
+    private func stopMacLogStreamSync() {
+        if let process = macLogProcess, process.isRunning {
+            process.terminate()
+            logger.info("Stopped Mac log streaming")
+        }
+        macLogProcess = nil
+    }
+
+    func stopMacLogStream() {
+        stopMacLogStreamSync()
+    }
+
     // MARK: - Log Streaming via log command (for simulators)
 
     private var currentProcess: Process?
@@ -168,6 +273,7 @@ actor XcodeLogService {
 
     func stopStreaming() {
         stopStreamingSync()
+        stopMacLogStreamSync()
     }
 
     private func stopStreamingSync() {
@@ -177,6 +283,11 @@ actor XcodeLogService {
         }
         currentProcess = nil
         isStreamingFlag = false
+    }
+
+    func stopAllStreaming() {
+        stopStreamingSync()
+        stopMacLogStreamSync()
     }
 
     var isStreaming: Bool {

@@ -6,9 +6,45 @@
 //
 
 import Foundation
+import os.log
 
 enum ShellEnvironment {
+    /// Cached environment loaded once at first access
+    private static var cachedEnvironment: [String: String]?
+    private static let cacheLock = NSLock()
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.aizen", category: "ShellEnvironment")
+
+    /// Get user's shell environment (cached after first load)
     nonisolated static func loadUserShellEnvironment() -> [String: String] {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+
+        if let cached = cachedEnvironment {
+            return cached
+        }
+
+        let env = loadEnvironmentFromShell()
+        cachedEnvironment = env
+        return env
+    }
+
+    /// Preload environment in background (call at app launch)
+    nonisolated static func preloadEnvironment() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            _ = loadUserShellEnvironment()
+        }
+    }
+
+    /// Force reload of environment (e.g., after user changes shell config)
+    nonisolated static func reloadEnvironment() {
+        cacheLock.lock()
+        cachedEnvironment = nil
+        cacheLock.unlock()
+        preloadEnvironment()
+    }
+
+    private nonisolated static func loadEnvironmentFromShell() -> [String: String] {
+        let startTime = CFAbsoluteTimeGetCurrent()
         let shell = getLoginShell()
         let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
 
@@ -52,8 +88,12 @@ enum ShellEnvironment {
                 }
             }
         } catch {
+            logger.error("Failed to load shell environment: \(error.localizedDescription)")
             return ProcessInfo.processInfo.environment
         }
+
+        let elapsed = CFAbsoluteTimeGetCurrent() - startTime
+        logger.debug("Shell environment loaded in \(String(format: "%.2f", elapsed * 1000))ms")
 
         return shellEnv.isEmpty ? ProcessInfo.processInfo.environment : shellEnv
     }

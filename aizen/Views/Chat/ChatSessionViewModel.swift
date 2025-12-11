@@ -77,6 +77,7 @@ class ChatSessionViewModel: ObservableObject {
     @Published var currentAgentPlan: Plan?
     @Published var hasModes: Bool = false
     @Published var currentModeId: String?
+    @Published var sessionState: SessionState = .idle
 
     // MARK: - Internal State
 
@@ -102,7 +103,11 @@ class ChatSessionViewModel: ObservableObject {
     }
 
     var isSessionReady: Bool {
-        currentAgentSession?.isActive == true && !needsAuth
+        sessionState.isReady && !needsAuth
+    }
+
+    var isSessionInitializing: Bool {
+        sessionState.isInitializing
     }
     
     // Computed bindings for sheet presentation (prevents recreation on every render)
@@ -261,6 +266,7 @@ class ChatSessionViewModel: ObservableObject {
         currentAgentPlan = session.agentPlan
         hasModes = !session.availableModes.isEmpty
         currentModeId = session.currentModeId
+        sessionState = session.sessionState
         showingPermissionAlert = session.permissionHandler.showingPermissionAlert
         currentPermissionRequest = session.permissionHandler.permissionRequest
     }
@@ -473,6 +479,14 @@ class ChatSessionViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] modeId in
                 self?.currentModeId = modeId
+            }
+            .store(in: &cancellables)
+
+        // Observe sessionState for lifecycle tracking
+        session.$sessionState
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] state in
+                self?.sessionState = state
             }
             .store(in: &cancellables)
 

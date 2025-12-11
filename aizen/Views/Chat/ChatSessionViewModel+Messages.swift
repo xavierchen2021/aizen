@@ -32,8 +32,24 @@ extension ChatSessionViewModel {
                     throw NSError(domain: "ChatSessionView", code: -1, userInfo: [NSLocalizedDescriptionKey: "No agent session"])
                 }
 
+                // Start session if not active
                 if !agentSession.isActive {
                     try await agentSession.start(agentName: self.selectedAgent, workingDir: self.worktree.path!)
+                }
+
+                // Wait for session to be ready (not just active) - handles initialization delay
+                var attempts = 0
+                while !agentSession.sessionState.isReady && attempts < 100 {
+                    // Check for failure state
+                    if case .failed(let reason) = agentSession.sessionState {
+                        throw NSError(domain: "ChatSessionView", code: -2, userInfo: [NSLocalizedDescriptionKey: "Session failed: \(reason)"])
+                    }
+                    try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                    attempts += 1
+                }
+
+                guard agentSession.sessionState.isReady else {
+                    throw NSError(domain: "ChatSessionView", code: -3, userInfo: [NSLocalizedDescriptionKey: "Session initialization timed out"])
                 }
 
                 try await agentSession.sendMessage(content: messageText, attachments: messageAttachments)
@@ -51,6 +67,7 @@ extension ChatSessionViewModel {
 
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                     self.attachments = messageAttachments
+                    self.isProcessing = false
                 }
             }
             // isProcessing is now derived from message state in setupSessionObservers

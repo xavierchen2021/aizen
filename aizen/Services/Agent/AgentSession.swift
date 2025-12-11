@@ -10,6 +10,25 @@ import Combine
 import UniformTypeIdentifiers
 import os.log
 
+/// Session lifecycle state for clear status tracking
+enum SessionState: Equatable {
+    case idle
+    case initializing  // Process launching, protocol init, waiting for session
+    case ready         // Fully initialized, can send messages
+    case closing
+    case failed(String)
+
+    var isReady: Bool {
+        if case .ready = self { return true }
+        return false
+    }
+
+    var isInitializing: Bool {
+        if case .initializing = self { return true }
+        return false
+    }
+}
+
 /// ObservableObject that wraps ACPClient for managing an agent session
 @MainActor
 class AgentSession: ObservableObject, ACPClientDelegate {
@@ -31,6 +50,7 @@ class AgentSession: ObservableObject, ACPClientDelegate {
     @Published var messages: [MessageItem] = []
     @Published var currentIterationId: String?
     @Published var isActive: Bool = false
+    @Published var sessionState: SessionState = .idle
     @Published var currentThought: String?
     @Published var error: String?
     @Published var isStreaming: Bool = false  // True while prompt request is in progress
@@ -85,23 +105,27 @@ class AgentSession: ObservableObject, ACPClientDelegate {
     /// Start a new agent session
     func start(agentName: String, workingDir: String) async throws {
         // Atomically check and set active state to prevent race conditions
-        guard !isActive else {
+        guard !isActive && sessionState != .initializing else {
             throw AgentSessionError.sessionAlreadyActive
         }
-        
-        // Mark as starting to prevent concurrent start calls
+
+        // Mark as initializing immediately for UI feedback
+        sessionState = .initializing
         isActive = true
-        
+
+        let startTime = CFAbsoluteTimeGetCurrent()
+        logger.info("[\(agentName)] Session start begin")
+
         // Store for potential rollback on error
         let previousAgentName = self.agentName
         let previousWorkingDir = self.workingDirectory
-        
+
         self.agentName = agentName
         self.workingDirectory = workingDir
 
-        // Get agent executable path from registry
+        // Get agent executable path from registry (nonisolated - no await needed)
         let agentPath = AgentRegistry.shared.getAgentPath(for: agentName)
-        let isValid = await AgentRegistry.shared.validateAgent(named: agentName)
+        let isValid = AgentRegistry.shared.validateAgent(named: agentName)
 
         guard let agentPath = agentPath, isValid else {
             // Agent not configured or invalid - trigger setup dialog
@@ -109,6 +133,7 @@ class AgentSession: ObservableObject, ACPClientDelegate {
             needsAgentSetup = true
             missingAgentName = agentName
             setupError = nil
+            sessionState = .failed("Agent not configured")
             return
         }
 
@@ -124,27 +149,46 @@ class AgentSession: ObservableObject, ACPClientDelegate {
 
         // Launch the agent process with correct working directory
         do {
+            logger.info("[\(agentName)] Launching process...")
             try await client.launch(agentPath: agentPath, arguments: launchArgs, workingDirectory: workingDir)
+            logger.info("[\(agentName)] Process launched in \(String(format: "%.0f", (CFAbsoluteTimeGetCurrent() - startTime) * 1000))ms")
         } catch {
             // Rollback on launch failure
             isActive = false
+            sessionState = .failed(error.localizedDescription)
             self.agentName = previousAgentName
             self.workingDirectory = previousWorkingDir
             self.acpClient = nil
+            logger.error("[\(agentName)] Launch failed: \(error.localizedDescription)")
             throw error
         }
 
-        // Initialize protocol
-        let initResponse = try await client.initialize(
-            protocolVersion: 1,
-            capabilities: ClientCapabilities(
-                fs: FileSystemCapabilities(
-                    readTextFile: true,
-                    writeTextFile: true
-                ),
-                terminal: true
+        // Start notification listener BEFORE any protocol calls
+        // This ensures we don't miss any notifications during initialization
+        startNotificationListener(client: client)
+
+        // Initialize protocol with timeout
+        logger.info("[\(agentName)] Sending initialize request...")
+        let initResponse: InitializeResponse
+        do {
+            initResponse = try await client.initialize(
+                protocolVersion: 1,
+                capabilities: ClientCapabilities(
+                    fs: FileSystemCapabilities(
+                        readTextFile: true,
+                        writeTextFile: true
+                    ),
+                    terminal: true
+                )
             )
-        )
+            logger.info("[\(agentName)] Initialize completed in \(String(format: "%.0f", (CFAbsoluteTimeGetCurrent() - startTime) * 1000))ms")
+        } catch {
+            isActive = false
+            sessionState = .failed("Initialize failed: \(error.localizedDescription)")
+            self.acpClient = nil
+            logger.error("[\(agentName)] Initialize failed: \(error.localizedDescription)")
+            throw error
+        }
 
         // Check agent version in background (non-blocking)
         versionCheckTask = Task { [weak self] in
@@ -164,8 +208,18 @@ class AgentSession: ObservableObject, ACPClientDelegate {
 
             if let savedAuthMethod = AgentRegistry.shared.getAuthPreference(for: agentName) {
                 if savedAuthMethod == "skip" {
-                    try await createSessionDirectly(workingDir: workingDir, client: client)
-                    return
+                    // Try to create session without auth, but with short timeout
+                    // Some agents may still work without auth (e.g., with env vars)
+                    do {
+                        logger.info("[\(agentName)] Trying session without auth (skip mode)...")
+                        try await createSessionDirectly(workingDir: workingDir, client: client, timeout: 5.0)
+                        return
+                    } catch {
+                        // Skip didn't work - clear preference and show auth dialog
+                        logger.warning("[\(agentName)] Skip auth failed, showing auth dialog: \(error.localizedDescription)")
+                        AgentRegistry.shared.clearAuthPreference(for: agentName)
+                        // Fall through to show auth dialog
+                    }
                 } else {
                     do {
                         try await performAuthentication(client: client, authMethodId: savedAuthMethod, workingDir: workingDir)
@@ -179,23 +233,32 @@ class AgentSession: ObservableObject, ACPClientDelegate {
             }
 
             // No saved preference or auth failed - show auth dialog
-            // Set session as active so UI can display properly, even though we're waiting for auth
-            self.isActive = true
             self.needsAuthentication = true
-            startNotificationListener(client: client)
 
             addSystemMessage("Authentication required for \(agentName). Available methods: \(authMethods.map { $0.name }.joined(separator: ", "))")
             return
         }
 
         // Create new session
-        let sessionResponse = try await client.newSession(
-            workingDirectory: workingDir,
-            mcpServers: []
-        )
+        logger.info("[\(agentName)] Creating new session...")
+        let sessionResponse: NewSessionResponse
+        do {
+            sessionResponse = try await client.newSession(
+                workingDirectory: workingDir,
+                mcpServers: []
+            )
+            logger.info("[\(agentName)] Session created in \(String(format: "%.0f", (CFAbsoluteTimeGetCurrent() - startTime) * 1000))ms, sessionId: \(sessionResponse.sessionId.value)")
+        } catch {
+            isActive = false
+            sessionState = .failed("newSession failed: \(error.localizedDescription)")
+            self.acpClient = nil
+            logger.error("[\(agentName)] newSession failed: \(error.localizedDescription)")
+            throw error
+        }
 
         self.sessionId = sessionResponse.sessionId
-        self.isActive = true
+        // Mark as ready only after everything is set up
+        self.sessionState = .ready
 
         if let modesInfo = sessionResponse.modes {
             self.availableModes = modesInfo.availableModes
@@ -206,8 +269,6 @@ class AgentSession: ObservableObject, ACPClientDelegate {
             self.availableModels = modelsInfo.availableModels
             self.currentModelId = modelsInfo.currentModelId
         }
-
-        startNotificationListener(client: client)
 
         let metadata = AgentRegistry.shared.getMetadata(for: agentName)
         let displayName = metadata?.name ?? agentName
@@ -248,6 +309,7 @@ class AgentSession: ObservableObject, ACPClientDelegate {
 
     /// Close the session
     func close() async {
+        sessionState = .closing
         isActive = false
 
         // Cancel all background tasks
@@ -266,19 +328,22 @@ class AgentSession: ObservableObject, ACPClientDelegate {
 
         acpClient = nil
         cancellables.removeAll()
+        sessionState = .idle
 
         addSystemMessage("Session closed")
     }
 
     /// Retry starting the session after agent setup is completed
     func retryStart() async throws {
-        // Reset setup state
-        needsAgentSetup = false
-        missingAgentName = nil
+        // Clear error but keep needsAgentSetup true until start succeeds
         setupError = nil
 
         // Attempt to start session again
         try await start(agentName: agentName, workingDir: workingDirectory)
+
+        // Only reset setup state after successful start
+        needsAgentSetup = false
+        missingAgentName = nil
     }
 
     // MARK: - ACPClientDelegate Methods

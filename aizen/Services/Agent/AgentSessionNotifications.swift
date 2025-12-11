@@ -41,9 +41,9 @@ extension AgentSession {
             // Handle different update types using the strongly-typed enum
             switch updateNotification.update {
             case .toolCall(let toolCallUpdate):
-                // Mark any in-progress message as complete before tool call
-                // This ensures text after tool calls appears as a new message
-                markLastMessageComplete()
+                // Note: We do NOT mark the message complete here anymore.
+                // Text chunks before and after tool calls should be part of the same message.
+                // The message is only marked complete when isStreaming becomes false.
 
                 // Check if this is a Task (subagent) tool call
                 let isTaskTool = isTaskToolCall(toolCallUpdate)

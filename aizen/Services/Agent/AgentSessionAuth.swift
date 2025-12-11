@@ -6,20 +6,25 @@
 //
 
 import Foundation
+import os.log
 
 // MARK: - AgentSession + Authentication
 
 @MainActor
 extension AgentSession {
     /// Helper to create session directly without authentication
-    func createSessionDirectly(workingDir: String, client: ACPClient) async throws {
+    func createSessionDirectly(workingDir: String, client: ACPClient, timeout: TimeInterval = 30.0) async throws {
+        logger.info("[\(self.agentName)] createSessionDirectly with timeout \(timeout)s...")
         let sessionResponse = try await client.newSession(
             workingDirectory: workingDir,
-            mcpServers: []
+            mcpServers: [],
+            timeout: timeout
         )
+        logger.info("[\(self.agentName)] Session created, sessionId: \(sessionResponse.sessionId.value)")
 
         self.sessionId = sessionResponse.sessionId
         self.isActive = true
+        self.sessionState = .ready
 
         if let modesInfo = sessionResponse.modes {
             self.availableModes = modesInfo.availableModes
@@ -31,7 +36,10 @@ extension AgentSession {
             self.currentModelId = modelsInfo.currentModelId
         }
 
-        startNotificationListener(client: client)
+        // Start notification listener if not already started
+        if notificationTask == nil {
+            startNotificationListener(client: client)
+        }
         let metadata = AgentRegistry.shared.getMetadata(for: agentName)
         let displayName = metadata?.name ?? agentName
         addSystemMessage("Session started with \(displayName) in \(workingDir)")

@@ -190,7 +190,8 @@ struct AvailableCommand: Codable {
 }
 
 struct CommandInputSpec: Codable {
-    let type: String
+    let type: String?
+    let hint: String?  // Codex uses this instead of type
     let properties: [String: AnyCodable]?
     let required: [String]?
 }

@@ -107,6 +107,12 @@ actor AgentInstaller {
                 package: package,
                 targetDir: agentDir
             )
+        case .uv(let package):
+            try await UVAgentInstaller.shared.install(
+                package: package,
+                targetDir: agentDir,
+                executableName: metadata.id
+            )
         case .binary(let urlString):
             let arch = getArchitecture()
             let resolvedURL = urlString.replacingOccurrences(of: "{arch}", with: arch)

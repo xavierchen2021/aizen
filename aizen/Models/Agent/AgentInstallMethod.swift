@@ -10,6 +10,7 @@ import Foundation
 /// Installation method for agents
 enum AgentInstallMethod: Codable, Equatable {
     case npm(package: String)
+    case uv(package: String)
     case binary(url: String)
     case githubRelease(repo: String, assetPattern: String)
 
@@ -25,6 +26,9 @@ enum AgentInstallMethod: Codable, Equatable {
         case "npm":
             let package = try container.decode(String.self, forKey: .package)
             self = .npm(package: package)
+        case "uv":
+            let package = try container.decode(String.self, forKey: .package)
+            self = .uv(package: package)
         case "binary":
             let url = try container.decode(String.self, forKey: .url)
             self = .binary(url: url)
@@ -43,6 +47,9 @@ enum AgentInstallMethod: Codable, Equatable {
         switch self {
         case .npm(let package):
             try container.encode("npm", forKey: .type)
+            try container.encode(package, forKey: .package)
+        case .uv(let package):
+            try container.encode("uv", forKey: .type)
             try container.encode(package, forKey: .package)
         case .binary(let url):
             try container.encode("binary", forKey: .type)

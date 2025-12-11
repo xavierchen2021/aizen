@@ -123,7 +123,8 @@ actor ACPClient {
     func initialize(
         protocolVersion: Int = 1,
         capabilities: ClientCapabilities,
-        clientInfo: ClientInfo? = nil
+        clientInfo: ClientInfo? = nil,
+        timeout: TimeInterval = 30.0
     ) async throws -> InitializeResponse {
         // Use provided clientInfo or default Aizen info
         let info = clientInfo ?? ClientInfo(
@@ -138,7 +139,7 @@ actor ACPClient {
             clientInfo: info
         )
 
-        let response = try await sendRequest(method: "initialize", params: request)
+        let response = try await sendRequest(method: "initialize", params: request, timeout: timeout)
 
         guard let result = response.result else {
             if let error = response.error {
@@ -153,14 +154,15 @@ actor ACPClient {
 
     func newSession(
         workingDirectory: String,
-        mcpServers: [MCPServerConfig] = []
+        mcpServers: [MCPServerConfig] = [],
+        timeout: TimeInterval = 30.0
     ) async throws -> NewSessionResponse {
         let request = NewSessionRequest(
             cwd: workingDirectory,
             mcpServers: mcpServers
         )
 
-        let response = try await sendRequest(method: "session/new", params: request)
+        let response = try await sendRequest(method: "session/new", params: request, timeout: timeout)
 
         guard let result = response.result else {
             if let error = response.error {

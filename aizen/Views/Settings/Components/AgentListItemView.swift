@@ -22,6 +22,7 @@ struct AgentListItemView: View {
     @State private var testTask: Task<Void, Never>?
     @State private var authMethodName: String?
     @State private var showingAuthClearedMessage = false
+    @State private var installedVersion: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -33,6 +34,12 @@ struct AgentListItemView: View {
                     HStack(spacing: 8) {
                         Text(metadata.name)
                             .font(.headline)
+
+                        if let version = installedVersion {
+                            Text(version)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
 
                         if !metadata.isBuiltIn {
                             Text("Custom")
@@ -94,34 +101,36 @@ struct AgentListItemView: View {
             // Configuration (only show if enabled)
             if metadata.isEnabled {
                 VStack(alignment: .leading, spacing: 8) {
-                    // Path field
-                    HStack(spacing: 8) {
-                        TextField("Executable path", text: Binding(
-                            get: { metadata.executablePath ?? "" },
-                            set: { newValue in
-                                metadata.executablePath = newValue.isEmpty ? nil : newValue
-                                Task {
-                                    await AgentRegistry.shared.updateAgent(metadata)
+                    // Path field - editable for custom agents only
+                    if metadata.canEditPath {
+                        HStack(spacing: 8) {
+                            TextField("Executable path", text: Binding(
+                                get: { metadata.executablePath ?? "" },
+                                set: { newValue in
+                                    metadata.executablePath = newValue.isEmpty ? nil : newValue
+                                    Task {
+                                        await AgentRegistry.shared.updateAgent(metadata)
+                                    }
                                 }
+                            ))
+                            .textFieldStyle(.roundedBorder)
+
+                            Button("Browse...") {
+                                showingFilePicker = true
                             }
-                        ))
-                        .textFieldStyle(.roundedBorder)
+                            .buttonStyle(.bordered)
 
-                        Button("Browse...") {
-                            showingFilePicker = true
-                        }
-                        .buttonStyle(.bordered)
-
-                        // Validation indicator
-                        if let path = metadata.executablePath, !path.isEmpty {
-                            if isAgentValid {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(.green)
-                                    .help("Executable is valid")
-                            } else {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(.red)
-                                    .help("Executable not found or not executable")
+                            // Validation indicator
+                            if let path = metadata.executablePath, !path.isEmpty {
+                                if isAgentValid {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(.green)
+                                        .help("Executable is valid")
+                                } else {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.red)
+                                        .help("Executable not found or not executable")
+                                }
                             }
                         }
                     }
@@ -291,6 +300,7 @@ struct AgentListItemView: View {
             await validateAgent()
             canUpdate = await AgentInstaller.shared.canUpdate(metadata)
             loadAuthStatus()
+            await loadVersion()
         }
         .onDisappear {
             testTask?.cancel()
@@ -298,16 +308,12 @@ struct AgentListItemView: View {
     }
 
     private func validateAgent() async {
-        // Use comprehensive validation that includes launch arguments and ACP protocol
-        let result = await AgentRegistry.shared.validateAgentWithProtocol(named: metadata.id)
+        // For settings, just check if the executable exists and is executable
+        // Full ACP protocol validation is done via "Test Connection" button
+        let isValid = AgentRegistry.shared.validateAgent(named: metadata.id)
         await MainActor.run {
-            isAgentValid = result.valid
-            // Optionally update error message if validation failed
-            if !result.valid, let error = result.error {
-                errorMessage = error
-            } else if result.valid {
-                errorMessage = nil
-            }
+            isAgentValid = isValid
+            errorMessage = nil
         }
     }
 
@@ -336,6 +342,10 @@ struct AgentListItemView: View {
             await MainActor.run {
                 canUpdate = canUpdateState
             }
+
+            // Reload version after update
+            await AgentVersionChecker.shared.clearCache(for: metadata.id)
+            await loadVersion()
         } catch {
             await MainActor.run {
                 testResult = "Update failed: \(error.localizedDescription)"
@@ -369,6 +379,9 @@ struct AgentListItemView: View {
             await MainActor.run {
                 canUpdate = canUpdateState
             }
+
+            // Load version after install
+            await loadVersion()
         } catch {
             await MainActor.run {
                 testResult = "Install failed: \(error.localizedDescription)"
@@ -441,5 +454,19 @@ struct AgentListItemView: View {
     private func loadAuthStatus() {
         authMethodName = AgentRegistry.shared.getAuthMethodName(for: metadata.id)
         showingAuthClearedMessage = false
+    }
+
+    private func loadVersion() async {
+        guard isAgentValid else {
+            await MainActor.run {
+                installedVersion = nil
+            }
+            return
+        }
+
+        let versionInfo = await AgentVersionChecker.shared.checkVersion(for: metadata.id)
+        await MainActor.run {
+            installedVersion = versionInfo.current
+        }
     }
 }

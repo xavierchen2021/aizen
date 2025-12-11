@@ -48,8 +48,15 @@ actor ACPProcessManager {
         let resolvedPath = (try? FileManager.default.destinationOfSymbolicLink(atPath: agentPath)) ?? agentPath
         let actualPath = resolvedPath.hasPrefix("/") ? resolvedPath : ((agentPath as NSString).deletingLastPathComponent as NSString).appendingPathComponent(resolvedPath)
 
-        // If this is a Node.js script (has #!/usr/bin/env node), invoke node directly
-        let isNodeScript = (try? String(contentsOf: URL(fileURLWithPath: actualPath), encoding: .utf8))?.hasPrefix("#!/usr/bin/env node") ?? false
+        // Check if this is a Node.js script by reading only the first line (shebang)
+        // Only read up to 64 bytes to check for "#!/usr/bin/env node" - much faster than reading entire file
+        let isNodeScript: Bool = {
+            guard let handle = FileHandle(forReadingAtPath: actualPath) else { return false }
+            defer { try? handle.close() }
+            guard let data = try? handle.read(upToCount: 64),
+                  let firstLine = String(data: data, encoding: .utf8) else { return false }
+            return firstLine.hasPrefix("#!/usr/bin/env node")
+        }()
 
         if isNodeScript {
             // Try to find node in multiple locations

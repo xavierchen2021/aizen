@@ -19,6 +19,11 @@ struct AgentMetadata: Codable, Identifiable {
     var launchArgs: [String]
     var installMethod: AgentInstallMethod?
 
+    /// Whether the user can edit the executable path (custom agents only)
+    var canEditPath: Bool {
+        !isBuiltIn
+    }
+
     init(
         id: String,
         name: String,

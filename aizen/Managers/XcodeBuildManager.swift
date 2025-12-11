@@ -619,6 +619,8 @@ class XcodeBuildManager: ObservableObject {
     private let logService = XcodeLogService()
     private var logStreamTask: Task<Void, Never>?
 
+    private var macLogStreamTask: Task<Void, Never>?
+
     func startLogStream() {
         guard let bundleId = launchedBundleId,
               let destination = launchedDestination else {
@@ -632,46 +634,107 @@ class XcodeBuildManager: ObservableObject {
         isLogStreamActive = true
         logOutput = []
 
-        logStreamTask = Task { [weak self] in
-            guard let self = self else { return }
+        let appName = (self.launchedAppPath as NSString?)?.lastPathComponent ?? bundleId
 
-            // For Mac apps and physical devices launched directly, use stdout/stderr pipes
-            // For simulators, use log stream command
-            let stream: AsyncStream<String>
-            if (destination.type == .mac || destination.type == .device),
-               let outputPipe = self.launchedOutputPipe,
-               let errorPipe = self.launchedErrorPipe {
-                let appName = (self.launchedAppPath as NSString?)?.lastPathComponent ?? bundleId
-                stream = await self.logService.startStreamingFromPipes(
+        // For Mac apps: run BOTH pipe streaming (for print()) AND os_log streaming (for Logger)
+        if destination.type == .mac,
+           let outputPipe = self.launchedOutputPipe,
+           let errorPipe = self.launchedErrorPipe {
+
+            // Start pipe streaming for stdout/stderr (captures print())
+            logStreamTask = Task { [weak self] in
+                guard let self = self else { return }
+
+                let pipeStream = await self.logService.startStreamingFromPipes(
                     outputPipe: outputPipe,
                     errorPipe: errorPipe,
                     appName: appName
                 )
-            } else {
-                stream = await self.logService.startStreaming(bundleId: bundleId, destination: destination)
-            }
 
-            for await line in stream {
-                await MainActor.run {
-                    self.logOutput.append(line)
-                    // Limit log buffer to prevent memory issues
-                    if self.logOutput.count > 10000 {
-                        self.logOutput.removeFirst(1000)
+                for await line in pipeStream {
+                    await MainActor.run {
+                        self.appendLogLine(line)
                     }
                 }
             }
 
-            await MainActor.run {
-                self.isLogStreamActive = false
+            // Start os_log streaming (captures Logger/os.log)
+            macLogStreamTask = Task { [weak self] in
+                guard let self = self else { return }
+
+                let osLogStream = await self.logService.startStreamingForMacApp(
+                    bundleId: bundleId,
+                    processName: appName
+                )
+
+                for await line in osLogStream {
+                    await MainActor.run {
+                        self.appendLogLine(line)
+                    }
+                }
+
+                await MainActor.run {
+                    self.isLogStreamActive = false
+                }
             }
+        } else if destination.type == .device,
+                  let outputPipe = self.launchedOutputPipe,
+                  let errorPipe = self.launchedErrorPipe {
+            // For physical devices, use pipe streaming only (device logs require different tools)
+            logStreamTask = Task { [weak self] in
+                guard let self = self else { return }
+
+                let stream = await self.logService.startStreamingFromPipes(
+                    outputPipe: outputPipe,
+                    errorPipe: errorPipe,
+                    appName: appName
+                )
+
+                for await line in stream {
+                    await MainActor.run {
+                        self.appendLogLine(line)
+                    }
+                }
+
+                await MainActor.run {
+                    self.isLogStreamActive = false
+                }
+            }
+        } else {
+            // For simulators, use log stream command (already captures both)
+            logStreamTask = Task { [weak self] in
+                guard let self = self else { return }
+
+                let stream = await self.logService.startStreaming(bundleId: bundleId, destination: destination)
+
+                for await line in stream {
+                    await MainActor.run {
+                        self.appendLogLine(line)
+                    }
+                }
+
+                await MainActor.run {
+                    self.isLogStreamActive = false
+                }
+            }
+        }
+    }
+
+    private func appendLogLine(_ line: String) {
+        logOutput.append(line)
+        // Limit log buffer to prevent memory issues
+        if logOutput.count > 10000 {
+            logOutput.removeFirst(1000)
         }
     }
 
     func stopLogStream() {
         logStreamTask?.cancel()
         logStreamTask = nil
+        macLogStreamTask?.cancel()
+        macLogStreamTask = nil
         Task {
-            await logService.stopStreaming()
+            await logService.stopAllStreaming()
         }
         isLogStreamActive = false
     }

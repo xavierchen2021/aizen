@@ -15,6 +15,14 @@ import os.log
 extension AgentSession {
     /// Send a message to the agent with optional file attachments
     func sendMessage(content: String, attachments: [ChatAttachment] = []) async throws {
+        // Check session state - must be ready to send messages
+        guard sessionState.isReady else {
+            if sessionState.isInitializing {
+                throw AgentSessionError.custom("Session is still initializing. Please wait...")
+            }
+            throw AgentSessionError.sessionNotActive
+        }
+
         guard let sessionId = sessionId, isActive else {
             throw AgentSessionError.sessionNotActive
         }
