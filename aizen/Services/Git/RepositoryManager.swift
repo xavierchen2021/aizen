@@ -17,24 +17,16 @@ class RepositoryManager: ObservableObject {
     private let container: NSPersistentContainer
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.aizen.app", category: "RepositoryManager")
 
-    // Domain services
-    private let executor: GitCommandExecutor
-    private let statusService: GitStatusService
-    private let branchService: GitBranchService
-    private let worktreeService: GitWorktreeService
-    private let remoteService: GitRemoteService
+    // Domain services (using libgit2)
+    private let statusService = GitStatusService()
+    private let branchService = GitBranchService()
+    private let worktreeService = GitWorktreeService()
+    private let remoteService = GitRemoteService()
     private let fileSystemManager: RepositoryFileSystemManager
 
     init(viewContext: NSManagedObjectContext) {
         self.viewContext = viewContext
         self.container = PersistenceController.shared.container
-
-        // Initialize domain services
-        self.executor = GitCommandExecutor()
-        self.statusService = GitStatusService(executor: executor)
-        self.branchService = GitBranchService(executor: executor)
-        self.worktreeService = GitWorktreeService(executor: executor)
-        self.remoteService = GitRemoteService(executor: executor)
         self.fileSystemManager = RepositoryFileSystemManager()
     }
 
@@ -79,13 +71,13 @@ class RepositoryManager: ObservableObject {
     // MARK: - Repository Operations
 
     func addExistingRepository(path: String, workspace: Workspace) async throws -> Repository {
-        // Validate it's a git repository
-        guard await executor.isGitRepository(at: path) else {
-            throw GitError.notAGitRepository
+        // Validate it's a git repository using libgit2
+        guard GitUtils.isGitRepository(at: path) else {
+            throw Libgit2Error.notARepository(path)
         }
 
         // Get main repository path (in case this is a worktree)
-        let mainRepoPath = await executor.getMainRepositoryPath(at: path)
+        let mainRepoPath = GitUtils.getMainRepositoryPath(at: path)
 
         // Check if repository already exists
         let fetchRequest: NSFetchRequest<Repository> = Repository.fetchRequest()
@@ -114,11 +106,35 @@ class RepositoryManager: ObservableObject {
     }
 
     func cloneRepository(url: String, destinationPath: String, workspace: Workspace) async throws -> Repository {
+        // Extract repo name from URL and append to destination
+        let repoName = extractRepoName(from: url)
+        let fullPath = (destinationPath as NSString).appendingPathComponent(repoName)
+
         // Clone the repository
-        try await remoteService.clone(url: url, to: destinationPath)
+        try await remoteService.clone(url: url, to: fullPath)
 
         // Add it as an existing repository
-        return try await addExistingRepository(path: destinationPath, workspace: workspace)
+        return try await addExistingRepository(path: fullPath, workspace: workspace)
+    }
+
+    private func extractRepoName(from url: String) -> String {
+        // Handle various URL formats:
+        // https://github.com/user/repo.git -> repo
+        // git@github.com:user/repo.git -> repo
+        // /path/to/repo -> repo
+        var name = URL(string: url)?.lastPathComponent ?? url
+
+        // Remove .git suffix if present
+        if name.hasSuffix(".git") {
+            name = String(name.dropLast(4))
+        }
+
+        // If still empty or invalid, use a default
+        if name.isEmpty || name == "/" {
+            name = "repository"
+        }
+
+        return name
     }
 
     func createNewRepository(path: String, name: String, workspace: Workspace) async throws -> Repository {
@@ -127,7 +143,7 @@ class RepositoryManager: ObservableObject {
 
         // Check if directory already exists
         if FileManager.default.fileExists(atPath: fullPath) {
-            throw GitError.commandFailed(message: "Directory already exists")
+            throw Libgit2Error.unknownError(0, "Directory already exists")
         }
 
         // Initialize git repository
@@ -147,7 +163,7 @@ class RepositoryManager: ObservableObject {
 
     func refreshRepository(_ repository: Repository) async throws {
         guard let repositoryPath = repository.path else {
-            throw GitError.invalidPath
+            throw Libgit2Error.invalidPath("Repository path is nil")
         }
 
         do {
@@ -180,22 +196,54 @@ class RepositoryManager: ObservableObject {
 
     func scanWorktrees(for repository: Repository) async throws {
         guard let repositoryPath = repository.path else {
-            throw GitError.invalidPath
+            throw Libgit2Error.invalidPath("Repository path is nil")
         }
 
         let worktreeInfos = try await worktreeService.listWorktrees(at: repositoryPath)
 
+        // Build set of valid paths from libgit2
+        let validPaths = Set(worktreeInfos.map { $0.path })
+
         // Get existing worktrees
         let existingWorktrees = (repository.worktrees as? Set<Worktree>) ?? []
-        var existingPaths = Set(existingWorktrees.map { $0.path! })
 
-        // Add or update worktrees
+        // First pass: delete any worktrees with invalid paths (missing /, duplicates, or not in libgit2 list)
+        var seenPaths = Set<String>()
+        for wt in existingWorktrees {
+            guard var path = wt.path else {
+                viewContext.delete(wt)
+                continue
+            }
+
+            // Fix path if missing leading /
+            if !path.hasPrefix("/") {
+                path = "/" + path
+                wt.path = path
+            }
+
+            // Delete if not in valid paths from libgit2 or if duplicate
+            if !validPaths.contains(path) || seenPaths.contains(path) {
+                viewContext.delete(wt)
+            } else {
+                seenPaths.insert(path)
+            }
+        }
+
+        // Build map of remaining worktrees by path
+        let remainingWorktrees = (repository.worktrees as? Set<Worktree>) ?? []
+        var worktreesByPath: [String: Worktree] = [:]
+        for wt in remainingWorktrees {
+            if let path = wt.path {
+                worktreesByPath[path] = wt
+            }
+        }
+
+        // Add or update worktrees from libgit2
         for info in worktreeInfos {
-            if let existing = existingWorktrees.first(where: { $0.path == info.path }) {
+            if let existing = worktreesByPath[info.path] {
                 // Update existing
                 existing.branch = info.branch
                 existing.isPrimary = info.isPrimary
-                existingPaths.remove(info.path)
             } else {
                 // Create new
                 let worktree = Worktree(context: viewContext)
@@ -206,33 +254,11 @@ class RepositoryManager: ObservableObject {
                 worktree.repository = repository
             }
         }
-
-        // Remove worktrees that no longer exist (parallel file checks)
-        let pathsToCheck = Array(existingPaths)
-        let existenceResults = await withTaskGroup(of: (String, Bool).self) { group in
-            for path in pathsToCheck {
-                group.addTask {
-                    (path, FileManager.default.fileExists(atPath: path))
-                }
-            }
-            var results: [String: Bool] = [:]
-            for await (path, exists) in group {
-                results[path] = exists
-            }
-            return results
-        }
-
-        for path in existingPaths {
-            if existenceResults[path] == false,
-               let worktree = existingWorktrees.first(where: { $0.path == path }) {
-                viewContext.delete(worktree)
-            }
-        }
     }
 
     func addWorktree(to repository: Repository, path: String, branch: String, createBranch: Bool, baseBranch: String? = nil) async throws -> Worktree {
         guard let repoPath = repository.path else {
-            throw GitError.invalidPath
+            throw Libgit2Error.invalidPath("Repository path is nil")
         }
 
         // Ensure .aizen directory exists and is ignored
@@ -268,7 +294,7 @@ class RepositoryManager: ObservableObject {
 
     func hasUnsavedChanges(_ worktree: Worktree) async throws -> Bool {
         guard let worktreePath = worktree.path else {
-            throw GitError.worktreeNotFound
+            throw Libgit2Error.worktreeNotFound("Worktree path is nil")
         }
         return try await statusService.hasUnsavedChanges(at: worktreePath)
     }
@@ -277,7 +303,7 @@ class RepositoryManager: ObservableObject {
         guard let repository = worktree.repository,
               let repoPath = repository.path,
               let worktreePath = worktree.path else {
-            throw GitError.worktreeNotFound
+            throw Libgit2Error.worktreeNotFound("Worktree path is nil")
         }
 
         try await worktreeService.removeWorktree(at: worktreePath, repoPath: repoPath, force: force)
@@ -299,7 +325,7 @@ class RepositoryManager: ObservableObject {
 
     func getWorktreeStatus(_ worktree: Worktree) async throws -> (branch: String, ahead: Int, behind: Int) {
         guard let path = worktree.path else {
-            throw GitError.worktreeNotFound
+            throw Libgit2Error.worktreeNotFound("Worktree path is nil")
         }
 
         let branch = try await statusService.getCurrentBranch(at: path)
@@ -310,17 +336,17 @@ class RepositoryManager: ObservableObject {
 
     func mergeFromWorktree(target: Worktree, source: Worktree) async throws -> MergeResult {
         guard let targetPath = target.path else {
-            throw GitError.worktreeNotFound
+            throw Libgit2Error.worktreeNotFound("Target worktree path is nil")
         }
 
         guard let sourceBranch = source.branch else {
-            throw GitError.worktreeNotFound
+            throw Libgit2Error.worktreeNotFound("Source worktree branch is nil")
         }
 
         // Validate target worktree has no uncommitted changes
         let hasChanges = try await hasUnsavedChanges(target)
         if hasChanges {
-            throw GitError.commandFailed(message: "Target worktree has uncommitted changes. Please commit or stash them first.")
+            throw Libgit2Error.uncommittedChanges("Target worktree has uncommitted changes. Please commit or stash them first.")
         }
 
         // Perform merge
@@ -329,7 +355,7 @@ class RepositoryManager: ObservableObject {
 
     func switchBranch(_ worktree: Worktree, to branchName: String) async throws {
         guard let path = worktree.path else {
-            throw GitError.worktreeNotFound
+            throw Libgit2Error.worktreeNotFound("Worktree path is nil")
         }
 
         let originalBranch = worktree.branch
@@ -348,7 +374,7 @@ class RepositoryManager: ObservableObject {
 
     func createAndSwitchBranch(_ worktree: Worktree, name: String, from baseBranch: String) async throws {
         guard let path = worktree.path else {
-            throw GitError.worktreeNotFound
+            throw Libgit2Error.worktreeNotFound("Worktree path is nil")
         }
 
         let originalBranch = worktree.branch

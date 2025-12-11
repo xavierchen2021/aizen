@@ -2,7 +2,7 @@
 //  GitStatusService.swift
 //  aizen
 //
-//  Domain service for Git status queries
+//  Domain service for Git status queries using libgit2
 //
 
 import Foundation
@@ -19,180 +19,88 @@ struct DetailedGitStatus {
     let deletions: Int
 }
 
-actor GitStatusService: GitDomainService {
-    let executor: GitCommandExecutor
-
-    init(executor: GitCommandExecutor) {
-        self.executor = executor
-    }
-
-    // MARK: - Private Helpers
-
-    private func parseAheadBehind(from line: String) -> (ahead: Int, behind: Int) {
-        var ahead = 0
-        var behind = 0
-
-        if let aheadRange = line.range(of: "ahead (\\d+)", options: .regularExpression) {
-            let aheadStr = line[aheadRange].split(separator: " ").last.map(String.init) ?? "0"
-            ahead = Int(aheadStr) ?? 0
-        }
-
-        if let behindRange = line.range(of: "behind (\\d+)", options: .regularExpression) {
-            let behindStr = line[behindRange].split(separator: " ").last.map(String.init) ?? "0"
-            behind = Int(behindStr) ?? 0
-        }
-
-        return (ahead, behind)
-    }
-
-    // MARK: - Public Methods
+actor GitStatusService {
 
     func getDetailedStatus(at path: String) async throws -> DetailedGitStatus {
-        let output = try await executor.executeGit(arguments: ["status", "--porcelain", "-b"], at: path)
+        // Run libgit2 operations on background thread to avoid blocking
+        return try await Task.detached {
+            let repo = try Libgit2Repository(path: path)
+            let status = try repo.status()
 
-        var stagedFiles: [String] = []
-        var modifiedFiles: [String] = []
-        var untrackedFiles: [String] = []
-        var conflictedFiles: [String] = []
-        var currentBranch: String?
-        var aheadBy = 0
-        var behindBy = 0
+            // Get current branch name
+            let currentBranch = try? repo.currentBranchName()
 
-        let lines = output.split(separator: "\n").map(String.init)
+            // Get ahead/behind counts
+            var aheadBy = 0
+            var behindBy = 0
 
-        for line in lines {
-            if line.hasPrefix("##") {
-                // Parse branch info: ## main...origin/main [ahead 2, behind 1]
-                // Or: ## No commits yet on main
-                let branchLine = line.replacingOccurrences(of: "## ", with: "")
-
-                // Handle "No commits yet on <branch>" format
-                if branchLine.hasPrefix("No commits yet on ") {
-                    currentBranch = branchLine.replacingOccurrences(of: "No commits yet on ", with: "")
-                } else if let dotIndex = branchLine.firstIndex(of: ".") {
-                    currentBranch = String(branchLine[..<dotIndex])
-                } else if let spaceIndex = branchLine.firstIndex(of: " ") {
-                    currentBranch = String(branchLine[..<spaceIndex])
-                } else {
-                    currentBranch = branchLine
-                }
-
-                let (ahead, behind) = parseAheadBehind(from: line)
-                aheadBy = ahead
-                behindBy = behind
-                continue
-            }
-
-            // Parse file status: XY filename
-            guard line.count >= 3 else { continue }
-
-            let statusPrefix = String(line.prefix(2))
-            var fileName = String(line.dropFirst(3))
-
-            let stagingStatus = statusPrefix.first ?? " "
-            let workingStatus = statusPrefix.last ?? " "
-
-            // Handle renames: "R  old/path.swift -> new/path.swift"
-            // Git expects just the new path for staging operations
-            if statusPrefix.hasPrefix("R") || statusPrefix.hasPrefix("C") {
-                // Extract new path from "old -> new" format
-                if let arrowRange = fileName.range(of: " -> ") {
-                    fileName = String(fileName[arrowRange.upperBound...])
-                }
-            }
-
-            // Check for conflicts (UU, AA, DD, AU, UA, DU, UD)
-            if stagingStatus == "U" || workingStatus == "U" ||
-               (stagingStatus == "A" && workingStatus == "A") ||
-               (stagingStatus == "D" && workingStatus == "D") {
-                conflictedFiles.append(fileName)
-                continue
-            }
-
-            // Check for untracked files first
-            if statusPrefix == "??" {
-                untrackedFiles.append(fileName)
-                continue
-            }
-
-            // Categorize files (can be in both lists if both staged and modified)
-            if stagingStatus != " " && stagingStatus != "?" {
-                // File has staged changes
-                stagedFiles.append(fileName)
-            }
-
-            if workingStatus == "M" || workingStatus == "D" {
-                // File has unstaged changes in working directory
-                modifiedFiles.append(fileName)
-            }
-        }
-
-        // Calculate additions and deletions
-        let (additions, deletions) = await calculateDiffStats(at: path, currentBranch: currentBranch)
-
-        return DetailedGitStatus(
-            stagedFiles: stagedFiles,
-            modifiedFiles: modifiedFiles,
-            untrackedFiles: untrackedFiles,
-            conflictedFiles: conflictedFiles,
-            currentBranch: currentBranch,
-            aheadBy: aheadBy,
-            behindBy: behindBy,
-            additions: additions,
-            deletions: deletions
-        )
-    }
-
-    private func calculateDiffStats(at path: String, currentBranch: String?) async -> (additions: Int, deletions: Int) {
-        var additions = 0
-        var deletions = 0
-
-        // Check if repo has any commits
-        guard currentBranch != nil else {
-            return (0, 0)
-        }
-
-        // Get diff stats
-        let diffOutput = try? await executor.executeGit(
-            arguments: ["diff", "--numstat", "HEAD"],
-            at: path
-        )
-
-        if let diffOutput = diffOutput {
-            for line in diffOutput.components(separatedBy: .newlines) {
-                let parts = line.split(separator: "\t")
-                if parts.count >= 2 {
-                    if let add = Int(parts[0]) {
-                        additions += add
-                    }
-                    if let del = Int(parts[1]) {
-                        deletions += del
+            if let branchName = currentBranch {
+                let branches = try repo.listBranches(type: .local)
+                if let branch = branches.first(where: { $0.name == branchName }) {
+                    if let aheadBehind = branch.aheadBehind {
+                        aheadBy = aheadBehind.ahead
+                        behindBy = aheadBehind.behind
                     }
                 }
             }
-        }
 
-        return (additions, deletions)
+            // Calculate additions/deletions from diff
+            let diffStats = try repo.diffStats()
+
+            // Map entries to file paths
+            let stagedFiles = status.staged.map { $0.path }
+            let modifiedFiles = status.modified.map { $0.path }
+            let untrackedFiles = status.untracked.map { $0.path }
+            let conflictedFiles = status.conflicted.map { $0.path }
+
+            return DetailedGitStatus(
+                stagedFiles: stagedFiles,
+                modifiedFiles: modifiedFiles,
+                untrackedFiles: untrackedFiles,
+                conflictedFiles: conflictedFiles,
+                currentBranch: currentBranch,
+                aheadBy: aheadBy,
+                behindBy: behindBy,
+                additions: diffStats.insertions,
+                deletions: diffStats.deletions
+            )
+        }.value
     }
 
     func getCurrentBranch(at path: String) async throws -> String {
-        try await execute(["branch", "--show-current"], at: path)
+        return try await Task.detached {
+            let repo = try Libgit2Repository(path: path)
+            guard let branch = try repo.currentBranchName() else {
+                throw Libgit2Error.referenceNotFound("HEAD")
+            }
+            return branch
+        }.value
     }
 
     func getBranchStatus(at path: String) async throws -> (ahead: Int, behind: Int) {
-        let output = try await executor.executeGit(arguments: ["status", "-sb", "--porcelain"], at: path)
+        return try await Task.detached {
+            let repo = try Libgit2Repository(path: path)
 
-        // Parse output like "## main...origin/main [ahead 2, behind 1]"
-        let lines = output.split(separator: "\n")
-        guard let statusLine = lines.first, statusLine.hasPrefix("##") else {
+            guard let branchName = try repo.currentBranchName() else {
+                return (0, 0)
+            }
+
+            let branches = try repo.listBranches(type: .local)
+            if let branch = branches.first(where: { $0.name == branchName }) {
+                if let aheadBehind = branch.aheadBehind {
+                    return (aheadBehind.ahead, aheadBehind.behind)
+                }
+            }
+
             return (0, 0)
-        }
-
-        return parseAheadBehind(from: String(statusLine))
+        }.value
     }
 
     func hasUnsavedChanges(at worktreePath: String) async throws -> Bool {
-        let output = try await execute(["status", "--porcelain"], at: worktreePath)
-        return !output.isEmpty
+        return try await Task.detached {
+            let repo = try Libgit2Repository(path: worktreePath)
+            let status = try repo.status()
+            return status.hasChanges
+        }.value
     }
 }

@@ -483,7 +483,7 @@ struct WorktreeListItemView: View {
             do {
                 // Create new branch from current branch
                 guard let currentBranch = worktree.branch else {
-                    throw GitError.worktreeNotFound
+                    throw Libgit2Error.branchNotFound("No current branch")
                 }
 
                 try await repositoryManager.createAndSwitchBranch(

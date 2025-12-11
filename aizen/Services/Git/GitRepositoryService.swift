@@ -2,8 +2,7 @@
 //  GitRepositoryService.swift
 //  aizen
 //
-//  Orchestrates Git operations using domain services
-//  Based on Zed editor architecture
+//  Orchestrates Git operations using domain services with libgit2
 //
 
 import Foundation
@@ -17,27 +16,14 @@ class GitRepositoryService: ObservableObject {
 
     private(set) var worktreePath: String
 
-    // Shared executor (reused across all operations)
-    private let executor: GitCommandExecutor
-
-    // Domain services
-    private let statusService: GitStatusService
-    private let stagingService: GitStagingService
-    private let branchService: GitBranchService
-    private let remoteService: GitRemoteService
+    // Domain services (no longer need executor)
+    private let statusService = GitStatusService()
+    private let stagingService = GitStagingService()
+    private let branchService = GitBranchService()
+    private let remoteService = GitRemoteService()
 
     init(worktreePath: String) {
         self.worktreePath = worktreePath
-
-        // Initialize shared executor
-        let executor = GitCommandExecutor()
-        self.executor = executor
-
-        // Initialize domain services
-        self.statusService = GitStatusService(executor: executor)
-        self.stagingService = GitStagingService(executor: executor)
-        self.branchService = GitBranchService(executor: executor)
-        self.remoteService = GitRemoteService(executor: executor)
     }
 
     // MARK: - Public API - Staging Operations
@@ -161,7 +147,6 @@ class GitRepositoryService: ObservableObject {
                         return
                     }
                     self.logger.info("fetch onSuccess: starting status reload")
-                    // Refresh status after fetch to update ahead/behind counts
                     Task { [weak self] in
                         guard let self = self else { return }
                         self.logger.info("fetch onSuccess: calling reloadStatusInternal")
@@ -191,7 +176,6 @@ class GitRepositoryService: ObservableObject {
                         onSuccess?()
                         return
                     }
-                    // Refresh status after pull to update file lists and tracking info
                     Task { [weak self] in
                         guard let self = self else { return }
                         await self.reloadStatusInternal()
@@ -223,7 +207,6 @@ class GitRepositoryService: ObservableObject {
                         return
                     }
                     self.logger.info("push onSuccess: starting status reload")
-                    // Refresh status after push to update ahead/behind counts
                     Task { [weak self] in
                         guard let self = self else { return }
                         self.logger.info("push onSuccess: calling reloadStatusInternal")
@@ -278,16 +261,13 @@ class GitRepositoryService: ObservableObject {
     }
 
     private func executeOperationBackground(_ operation: @escaping () async throws -> Void, onSuccess: (() -> Void)? = nil, onError: ((Error) -> Void)? = nil) async {
-        // Set pending on MainActor
         await MainActor.run {
             self.isOperationPending = true
         }
 
         do {
-            // Execute operation (already on background via Task)
             try await operation()
 
-            // Success callback on MainActor
             if let onSuccess = onSuccess {
                 await MainActor.run {
                     onSuccess()
@@ -299,7 +279,6 @@ class GitRepositoryService: ObservableObject {
             }
         }
 
-        // Clear pending on MainActor
         await MainActor.run {
             self.isOperationPending = false
         }
@@ -318,7 +297,6 @@ class GitRepositoryService: ObservableObject {
 
     nonisolated
     private func loadGitStatus() async throws -> GitStatus {
-        // Get detailed status from statusService (includes additions/deletions)
         let detailedStatus = try await statusService.getDetailedStatus(at: worktreePath)
 
         return GitStatus(

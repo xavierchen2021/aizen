@@ -277,8 +277,8 @@ struct WorktreeCreateSheet: View {
                 }
             } catch {
                 await MainActor.run {
-                    if let gitError = error as? GitError {
-                        errorMessage = gitError.errorDescription
+                    if let libgit2Error = error as? Libgit2Error {
+                        errorMessage = libgit2Error.errorDescription
                     } else {
                         errorMessage = error.localizedDescription
                     }

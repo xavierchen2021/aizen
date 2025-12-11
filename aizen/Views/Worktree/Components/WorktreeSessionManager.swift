@@ -8,6 +8,9 @@
 import SwiftUI
 import os.log
 
+// NOTE: TmuxSessionManager lives outside Views; keep a lightweight reference here.
+private let tmuxManager = TmuxSessionManager.shared
+
 struct WorktreeSessionManager {
     let worktree: Worktree
     let viewModel: WorktreeViewModel
@@ -53,6 +56,17 @@ struct WorktreeSessionManager {
 
     func closeTerminalSession(_ session: TerminalSession) {
         guard let context = worktree.managedObjectContext else { return }
+
+        // Best effort: tear down any tmux sessions backing this terminal tab.
+        if let layoutJSON = session.splitLayout,
+           let layout = SplitLayoutHelper.decode(layoutJSON) {
+            let paneIds = layout.allPaneIds()
+            Task {
+                for paneId in paneIds {
+                    await tmuxManager.killSession(paneId: paneId)
+                }
+            }
+        }
 
         if let id = session.id {
             TerminalSessionManager.shared.removeAllTerminals(for: id)

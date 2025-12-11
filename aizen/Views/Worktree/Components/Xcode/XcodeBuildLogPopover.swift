@@ -14,10 +14,11 @@ struct XcodeBuildLogPopover: View {
     let worktree: Worktree?
     let onRetry: (() -> Void)?
     let onDismiss: (() -> Void)?
+    private let lines: [String]
 
-    @State private var searchText = ""
     @State private var showingSendToAgent = false
     @State private var showCopiedFeedback = false
+    @State private var showFullLog = false
 
     init(
         log: String,
@@ -31,6 +32,7 @@ struct XcodeBuildLogPopover: View {
         self.worktree = worktree
         self.onRetry = onRetry
         self.onDismiss = onDismiss
+        self.lines = log.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
     }
 
     var body: some View {
@@ -56,6 +58,9 @@ struct XcodeBuildLogPopover: View {
                 onDismiss: { showingSendToAgent = false },
                 onSend: { onDismiss?() }
             )
+        }
+        .sheet(isPresented: $showFullLog) {
+            fullLogSheet
         }
     }
 
@@ -88,6 +93,14 @@ struct XcodeBuildLogPopover: View {
                 Label(showCopiedFeedback ? "Copied" : "Copy", systemImage: showCopiedFeedback ? "checkmark" : "doc.on.doc")
             }
             .disabled(log.isEmpty)
+
+            if truncatedLines {
+                Button {
+                    showFullLog = true
+                } label: {
+                    Label("Open Full Log", systemImage: "arrow.up.left.and.arrow.down.right")
+                }
+            }
 
             // Send to agent button
             if worktree != nil {
@@ -146,11 +159,24 @@ struct XcodeBuildLogPopover: View {
             emptyState
         } else {
             ScrollView {
-                Text(highlightedLog)
-                    .font(.system(size: 11, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    ForEach(Array(displayLines.enumerated()), id: \.offset) { _, line in
+                        let text = String(line)
+                        Text(text)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(color(for: text))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    if truncatedLines {
+                        Text("… truncated, showing first \(displayLines.count) of \(totalLines) lines")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 6)
+                    }
+                }
+                .padding()
             }
             .background(Color(nsColor: .textBackgroundColor))
         }
@@ -167,29 +193,63 @@ struct XcodeBuildLogPopover: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var highlightedLog: AttributedString {
-        var result = AttributedString(log)
+    private var fullLogSheet: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Full Build Log")
+                    .font(.headline)
+                Spacer()
+                Button("Copy All") { copyToClipboard() }
+                    .disabled(log.isEmpty)
+                Button("Close") { showFullLog = false }
+            }
+            .padding()
 
-        // Highlight errors in red
-        if let errorRange = result.range(of: "error:") {
-            result[errorRange].foregroundColor = .red
-        }
+            Divider()
 
-        // Find and highlight all error lines
-        let lines = log.components(separatedBy: "\n")
-        for line in lines {
-            if line.contains("error:") {
-                if let range = result.range(of: line) {
-                    result[range].foregroundColor = .red
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    ForEach(fullLines.indices, id: \.self) { idx in
+                        let line = fullLines[idx]
+                        Text(line)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(color(for: line))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
-            } else if line.contains("warning:") {
-                if let range = result.range(of: line) {
-                    result[range].foregroundColor = .orange
-                }
+                .padding()
             }
         }
+        .frame(minWidth: 800, minHeight: 600)
+    }
 
-        return result
+    // MARK: - Log Rendering Helpers
+
+    private var fullLines: [String] { lines }
+
+    private var totalLines: Int {
+        fullLines.count
+    }
+
+    private var displayLines: ArraySlice<String> {
+        fullLines.prefix(maxPreviewLines)
+    }
+
+    private var truncatedLines: Bool {
+        totalLines > maxPreviewLines
+    }
+
+    private let maxPreviewLines = 600
+
+    private func color(for line: String) -> Color {
+        if line.contains("error:") {
+            return .red
+        } else if line.contains("warning:") {
+            return .orange
+        } else {
+            return .primary
+        }
     }
 }
 

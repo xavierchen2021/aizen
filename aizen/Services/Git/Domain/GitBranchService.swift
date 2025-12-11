@@ -2,7 +2,7 @@
 //  GitBranchService.swift
 //  aizen
 //
-//  Domain service for Git branch operations
+//  Domain service for Git branch operations using libgit2
 //
 
 import Foundation
@@ -14,101 +14,97 @@ struct BranchInfo: Hashable, Identifiable {
     let isRemote: Bool
 }
 
-actor GitBranchService: GitDomainService {
-    let executor: GitCommandExecutor
-
-    init(executor: GitCommandExecutor) {
-        self.executor = executor
-    }
+actor GitBranchService {
 
     func listBranches(at repoPath: String, includeRemote: Bool = true) async throws -> [BranchInfo] {
-        // Use --no-pager explicitly and avoid -v for faster output on large repos
-        var arguments = ["--no-pager", "branch", "--no-color", "--format=%(refname:short) %(objectname:short) %(if)%(HEAD)%(then)*%(end)"]
-        if includeRemote {
-            arguments.append("-a")
-        }
+        return try await Task.detached {
+            let repo = try Libgit2Repository(path: repoPath)
+            let type: Libgit2BranchType = includeRemote ? .all : .local
+            let branches = try repo.listBranches(type: type)
 
-        let output = try await executor.executeGit(arguments: arguments, at: repoPath)
-        return parseBranchListFormatted(output)
-    }
+            // Get commits for branches
+            var result: [BranchInfo] = []
+            for branch in branches {
+                // Skip HEAD references
+                if branch.name == "HEAD" || branch.name.hasSuffix("/HEAD") {
+                    continue
+                }
 
-    private func parseBranchListFormatted(_ output: String) -> [BranchInfo] {
-        let lines = output.split(separator: "\n").map(String.init)
-        var branches: [BranchInfo] = []
+                // Get short commit hash
+                var commit = ""
+                if let log = try? repo.log(limit: 1), let first = log.first {
+                    commit = first.shortOid
+                }
 
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.isEmpty else { continue }
-
-            // Skip detached HEAD entries
-            if trimmed.contains("HEAD detached") || trimmed.hasPrefix("(HEAD") {
-                continue
+                result.append(BranchInfo(
+                    name: branch.name,
+                    commit: commit,
+                    isRemote: branch.isRemote
+                ))
             }
 
-            let components = trimmed.split(separator: " ", maxSplits: 2).map(String.init)
-            guard components.count >= 2 else { continue }
-
-            let name = components[0]
-            let commit = components[1]
-            let isRemote = name.hasPrefix("remotes/")
-
-            // Skip HEAD -> refs
-            if name == "origin/HEAD" || name.hasSuffix("/HEAD") {
-                continue
-            }
-
-            branches.append(BranchInfo(
-                name: name.replacingOccurrences(of: "remotes/", with: ""),
-                commit: commit,
-                isRemote: isRemote
-            ))
-        }
-
-        return branches
+            return result
+        }.value
     }
 
     func checkoutBranch(at path: String, branch: String) async throws {
-        try await executeVoid(["checkout", branch], at: path)
+        try await Task.detached {
+            let repo = try Libgit2Repository(path: path)
+            try repo.checkoutBranch(name: branch)
+        }.value
     }
 
     func createBranch(at path: String, name: String, from baseBranch: String? = nil) async throws {
-        var arguments = ["checkout", "-b", name]
-        if let baseBranch = baseBranch {
-            arguments.append(baseBranch)
-        }
-        try await executeVoid(arguments, at: path)
+        try await Task.detached {
+            let repo = try Libgit2Repository(path: path)
+            try repo.createBranch(name: name, from: baseBranch)
+            // Checkout the new branch
+            try repo.checkoutBranch(name: name)
+        }.value
     }
 
     func deleteBranch(at path: String, name: String, force: Bool = false) async throws {
-        let flag = force ? "-D" : "-d"
-        try await executeVoid(["branch", flag, name], at: path)
+        try await Task.detached {
+            let repo = try Libgit2Repository(path: path)
+            try repo.deleteBranch(name: name, force: force)
+        }.value
     }
 
     func mergeBranch(at path: String, branch: String) async throws -> MergeResult {
-        do {
-            let output = try await executor.executeGit(arguments: ["merge", branch], at: path)
+        // libgit2 merge is complex - use git command on background thread
+        return try await Task.detached {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+            process.arguments = ["merge", branch]
+            process.currentDirectoryURL = URL(fileURLWithPath: path)
 
-            if output.contains("Already up to date") || output.contains("Already up-to-date") {
-                return .alreadyUpToDate
+            let pipe = Pipe()
+            let errorPipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = errorPipe
+
+            try process.run()
+            process.waitUntilExit()
+
+            let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            let errorOutput = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+
+            if process.terminationStatus == 0 {
+                if output.contains("Already up to date") || output.contains("Already up-to-date") {
+                    return MergeResult.alreadyUpToDate
+                }
+                return MergeResult.success
             }
 
-            return .success
-        } catch {
-            let errorMessage = error.localizedDescription
-
-            if errorMessage.contains("CONFLICT") || errorMessage.contains("Merge conflict") {
-                let conflictedFiles = try await parseConflictedFiles(at: path)
-                return .conflict(files: conflictedFiles)
+            // Check for conflicts
+            if errorOutput.contains("CONFLICT") || errorOutput.contains("Merge conflict") || output.contains("CONFLICT") {
+                let repo = try Libgit2Repository(path: path)
+                let status = try repo.status()
+                let conflictedFiles = status.conflicted.map { $0.path }
+                return MergeResult.conflict(files: conflictedFiles)
             }
 
-            throw error
-        }
-    }
-
-    // MARK: - Private Helpers
-
-    private func parseConflictedFiles(at path: String) async throws -> [String] {
-        let output = try await executor.executeGit(arguments: ["diff", "--name-only", "--diff-filter=U"], at: path)
-        return output.split(separator: "\n").map { String($0).trimmingCharacters(in: .whitespaces) }
+            throw Libgit2Error.mergeConflict(errorOutput)
+        }.value
     }
 }

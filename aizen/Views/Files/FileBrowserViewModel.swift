@@ -79,7 +79,7 @@ class FileBrowserViewModel: ObservableObject {
     private let viewContext: NSManagedObjectContext
     private var session: FileBrowserSession?
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.aizen.app", category: "FileBrowser")
-    private let gitExecutor = GitCommandExecutor()
+    private let gitStatusService = GitStatusService()
 
     init(worktree: Worktree, context: NSManagedObjectContext) {
         self.worktree = worktree
@@ -397,12 +397,34 @@ class FileBrowserViewModel: ObservableObject {
         guard let worktreePath = worktree.path else { return }
 
         do {
-            // Load git status
-            let output = try await gitExecutor.executeGit(
-                arguments: ["status", "--porcelain", "-uall"],
-                at: worktreePath
-            )
-            parseGitStatus(output, basePath: worktreePath)
+            // Load git status using libgit2
+            let repo = try Libgit2Repository(path: worktreePath)
+            let status = try repo.status()
+
+            // Convert to file status map
+            var newStatus: [String: FileGitStatus] = [:]
+
+            for entry in status.staged {
+                let absolutePath = (worktreePath as NSString).appendingPathComponent(entry.path)
+                newStatus[absolutePath] = .staged
+            }
+
+            for entry in status.modified {
+                let absolutePath = (worktreePath as NSString).appendingPathComponent(entry.path)
+                newStatus[absolutePath] = .modified
+            }
+
+            for entry in status.untracked {
+                let absolutePath = (worktreePath as NSString).appendingPathComponent(entry.path)
+                newStatus[absolutePath] = .untracked
+            }
+
+            for entry in status.conflicted {
+                let absolutePath = (worktreePath as NSString).appendingPathComponent(entry.path)
+                newStatus[absolutePath] = .conflicted
+            }
+
+            gitFileStatus = newStatus
 
             // Load gitignored files for visible directories
             await loadGitIgnored(for: worktreePath)
@@ -517,12 +539,23 @@ class FileBrowserViewModel: ObservableObject {
             let batchEnd = min(batchStart + batchSize, pathsToCheck.count)
             let batch = Array(pathsToCheck[batchStart..<batchEnd])
 
+            // Use git check-ignore command (libgit2 doesn't have this functionality)
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+            process.arguments = ["check-ignore"] + batch
+            process.currentDirectoryURL = URL(fileURLWithPath: basePath)
+
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = FileHandle.nullDevice
+
             do {
-                // git check-ignore returns non-zero if no paths are ignored, so we catch errors
-                let output = try await gitExecutor.executeGit(
-                    arguments: ["check-ignore"] + batch,
-                    at: basePath
-                )
+                try process.run()
+                process.waitUntilExit()
+
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                let output = String(data: data, encoding: .utf8) ?? ""
+
                 for line in output.split(separator: "\n") {
                     let path = String(line).trimmingCharacters(in: .whitespacesAndNewlines)
                     if !path.isEmpty {

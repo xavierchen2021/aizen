@@ -2,7 +2,7 @@
 //  GitDiffService.swift
 //  aizen
 //
-//  Service for getting git diffs and file changes
+//  Service for getting git diffs and file changes using libgit2
 //
 
 import Foundation
@@ -23,73 +23,53 @@ struct FileDiff {
 }
 
 actor GitDiffService {
-    private let executor: GitCommandExecutor
-
-    init(executor: GitCommandExecutor = GitCommandExecutor()) {
-        self.executor = executor
-    }
 
     /// Get diff for a specific file
-    func getFileDiff(at path: String, in repoPath: String) async throws -> FileDiff {
-        // Get the diff with line numbers
-        let output = try await executor.executeGit(
-            arguments: ["diff", "--unified=0", "--no-color", path],
-            at: repoPath
-        )
+    func getFileDiff(at filePath: String, in repoPath: String) async throws -> FileDiff {
+        let repo = try Libgit2Repository(path: repoPath)
 
-        return parseDiff(output)
-    }
+        // Get diff for the file
+        if let delta = try repo.diffFile(filePath) {
+            var changes: [FileDiff.Change] = []
 
-    /// Parse git diff output into line change information
-    private func parseDiff(_ output: String) -> FileDiff {
-        var changes: [FileDiff.Change] = []
-
-        let lines = output.components(separatedBy: .newlines)
-
-        for line in lines {
-            // Parse unified diff format: @@ -start,count +start,count @@
-            if line.hasPrefix("@@") {
-                let components = line.components(separatedBy: " ")
-                for component in components {
-                    if component.hasPrefix("+") && !component.hasPrefix("+++") {
-                        // Added/modified lines
-                        let rangeStr = String(component.dropFirst())
-                        if let range = parseRange(rangeStr), range.count > 0 {
-                            for lineNum in range.start..<(range.start + range.count) {
-                                changes.append(FileDiff.Change(lineNumber: lineNum, type: .added))
-                            }
+            for hunk in delta.hunks {
+                for line in hunk.lines {
+                    switch line.origin {
+                    case .addition:
+                        if let lineNum = line.newLineNumber {
+                            changes.append(FileDiff.Change(lineNumber: lineNum, type: .added))
                         }
-                    } else if component.hasPrefix("-") && !component.hasPrefix("---") {
-                        // Deleted lines (we won't show these in the gutter)
-                        let rangeStr = String(component.dropFirst())
-                        if let range = parseRange(rangeStr), range.count > 0 {
-                            for lineNum in range.start..<(range.start + range.count) {
-                                changes.append(FileDiff.Change(lineNumber: lineNum, type: .deleted))
-                            }
+                    case .deletion:
+                        if let lineNum = line.oldLineNumber {
+                            changes.append(FileDiff.Change(lineNumber: lineNum, type: .deleted))
                         }
+                    default:
+                        break
                     }
                 }
             }
+
+            return FileDiff(changes: changes)
         }
 
-        return FileDiff(changes: changes)
+        return FileDiff(changes: [])
     }
 
-    /// Parse range string like "10,5" or "10" into (start, count)
-    private func parseRange(_ rangeStr: String) -> (start: Int, count: Int)? {
-        if rangeStr.contains(",") {
-            let parts = rangeStr.components(separatedBy: ",")
-            guard parts.count == 2,
-                  let start = Int(parts[0]),
-                  let count = Int(parts[1]) else {
-                return nil
-            }
-            return (start, count)
-        } else {
-            guard let start = Int(rangeStr) else {
-                return nil
-            }
-            return (start, 1)
-        }
+    /// Get full diff content for display
+    func getFullDiff(at repoPath: String) async throws -> [Libgit2DiffDelta] {
+        let repo = try Libgit2Repository(path: repoPath)
+        return try repo.diffIndexToWorkdir()
+    }
+
+    /// Get staged diff content
+    func getStagedDiff(at repoPath: String) async throws -> [Libgit2DiffDelta] {
+        let repo = try Libgit2Repository(path: repoPath)
+        return try repo.diffHeadToIndex()
+    }
+
+    /// Get diff statistics
+    func getDiffStats(at repoPath: String) async throws -> Libgit2DiffStats {
+        let repo = try Libgit2Repository(path: repoPath)
+        return try repo.diffStats()
     }
 }

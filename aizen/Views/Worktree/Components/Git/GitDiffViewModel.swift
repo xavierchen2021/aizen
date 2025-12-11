@@ -56,20 +56,12 @@ class GitDiffViewModel: ObservableObject {
                     // For untracked files, read file content and show as all additions
                     lines = await self.loadUntrackedFileAsDiff(file)
                 } else {
-                    let executor = GitCommandExecutor()
-                    var diffOutput: String
-                    do {
-                        diffOutput = try await executor.executeGit(
-                            arguments: ["diff", "HEAD", "--", file],
-                            at: self.repoPath
-                        )
-                    } catch {
-                        diffOutput = try await executor.executeGit(
-                            arguments: ["diff", "--", file],
-                            at: self.repoPath
-                        )
+                    // Use git command for formatted diff output
+                    var diffOutput = await self.runGitDiff(["diff", "HEAD", "--", file])
+                    if diffOutput == nil {
+                        diffOutput = await self.runGitDiff(["diff", "--", file])
                     }
-                    lines = DiffParser.parseUnifiedDiff(diffOutput)
+                    lines = DiffParser.parseUnifiedDiff(diffOutput ?? "")
                 }
 
                 guard !Task.isCancelled else { return }
@@ -125,22 +117,12 @@ class GitDiffViewModel: ObservableObject {
         do {
             // Load tracked files with single git diff
             if !filesToLoad.isEmpty {
-                let executor = GitCommandExecutor()
-                var diffOutput: String
-                do {
-                    diffOutput = try await executor.executeGit(
-                        arguments: ["diff", "HEAD"],
-                        at: repoPath
-                    )
-                } catch {
-                    // HEAD doesn't exist (new repo), try diff without HEAD
-                    diffOutput = try await executor.executeGit(
-                        arguments: ["diff"],
-                        at: repoPath
-                    )
+                var diffOutput = await runGitDiff(["diff", "HEAD"])
+                if diffOutput == nil {
+                    diffOutput = await runGitDiff(["diff"])
                 }
 
-                let parsedByFile = DiffParser.splitDiffByFile(diffOutput)
+                let parsedByFile = DiffParser.splitDiffByFile(diffOutput ?? "")
 
                 for file in filesToLoad {
                     let lines = parsedByFile[file] ?? []
@@ -214,6 +196,24 @@ class GitDiffViewModel: ObservableObject {
         }
 
         return diffLines
+    }
+
+    /// Get unified diff output using libgit2
+    private func runGitDiff(_ args: [String]) async -> String? {
+        let path = repoPath
+        return await Task.detached {
+            do {
+                let repo = try Libgit2Repository(path: path)
+                // Check if this is a HEAD diff or unstaged diff
+                if args.contains("HEAD") {
+                    return try repo.diffUnified()
+                } else {
+                    return try repo.diffUnstagedUnified()
+                }
+            } catch {
+                return nil
+            }
+        }.value
     }
 
     deinit {

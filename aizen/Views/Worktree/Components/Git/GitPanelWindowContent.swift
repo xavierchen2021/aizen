@@ -384,17 +384,29 @@ struct GitPanelWindowContent: View {
     }
 
     private func loadDiff(for commit: GitCommit?) async {
-        let executor = GitCommandExecutor()
         let path = worktreePath
 
         guard !path.isEmpty else { return }
 
         if let commit = commit {
-            // Load diff for specific commit
-            if let commitDiff = try? await executor.executeGit(
-                arguments: ["show", "--format=", commit.id],
-                at: path
-            ) {
+            // Load diff for specific commit - use shell for git show (commit display)
+            let output = await Task.detached {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+                process.arguments = ["show", "--format=", commit.id]
+                process.currentDirectoryURL = URL(fileURLWithPath: path)
+
+                let pipe = Pipe()
+                process.standardOutput = pipe
+                process.standardError = FileHandle.nullDevice
+
+                guard (try? process.run()) != nil else { return nil as String? }
+                process.waitUntilExit()
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                return String(data: data, encoding: .utf8)
+            }.value
+
+            if let commitDiff = output {
                 diffOutput = commitDiff
             }
         } else {
@@ -404,49 +416,50 @@ struct GitPanelWindowContent: View {
     }
 
     private func loadWorkingDiff() async {
-        let executor = GitCommandExecutor()
         let path = worktreePath
 
         guard !path.isEmpty else { return }
 
-        // Try git diff HEAD first
-        if let headDiff = try? await executor.executeGit(arguments: ["--no-pager", "diff", "HEAD"], at: path),
-           !headDiff.isEmpty {
-            diffOutput = headDiff
-            return
-        }
+        // Use libgit2 for working directory diff
+        let result = await Task.detached {
+            do {
+                let repo = try Libgit2Repository(path: path)
 
-        // Fallback: cached diff
-        if let cachedDiff = try? await executor.executeGit(arguments: ["--no-pager", "diff", "--cached"], at: path),
-           !cachedDiff.isEmpty {
-            diffOutput = cachedDiff
-            return
-        }
-
-        // Fallback: unstaged diff
-        if let unstagedDiff = try? await executor.executeGit(arguments: ["--no-pager", "diff"], at: path),
-           !unstagedDiff.isEmpty {
-            diffOutput = unstagedDiff
-            return
-        }
-
-        // Last resort: untracked files
-        if let untrackedOutput = try? await executor.executeGit(
-            arguments: ["ls-files", "--others", "--exclude-standard"],
-            at: path
-        ) {
-            let untrackedFiles = untrackedOutput
-                .split(separator: "\n")
-                .filter { !$0.isEmpty }
-
-            if !untrackedFiles.isEmpty {
-                var output = ""
-                for file in untrackedFiles.prefix(50) {
-                    output += Self.buildFileDiff(file: String(file), basePath: path)
+                // Try combined diff (HEAD to workdir with index)
+                let headDiff = try repo.diffUnified()
+                if !headDiff.isEmpty {
+                    return headDiff
                 }
-                diffOutput = output
+
+                // Fallback: staged diff
+                let stagedDiff = try repo.diffStagedUnified()
+                if !stagedDiff.isEmpty {
+                    return stagedDiff
+                }
+
+                // Fallback: unstaged diff
+                let unstagedDiff = try repo.diffUnstagedUnified()
+                if !unstagedDiff.isEmpty {
+                    return unstagedDiff
+                }
+
+                // Last resort: untracked files
+                let status = try repo.status()
+                if !status.untracked.isEmpty {
+                    var output = ""
+                    for entry in status.untracked.prefix(50) {
+                        output += Self.buildFileDiff(file: entry.path, basePath: path)
+                    }
+                    return output
+                }
+
+                return ""
+            } catch {
+                return ""
             }
-        }
+        }.value
+
+        diffOutput = result
     }
 
     private func reloadDiff() {

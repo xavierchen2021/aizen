@@ -2,7 +2,7 @@
 //  GitWorktreeService.swift
 //  aizen
 //
-//  Domain service for Git worktree operations
+//  Domain service for Git worktree operations using libgit2
 //
 
 import Foundation
@@ -15,145 +15,135 @@ struct WorktreeInfo {
     let isDetached: Bool
 }
 
-actor GitWorktreeService: GitDomainService {
-    let executor: GitCommandExecutor
-
-    init(executor: GitCommandExecutor) {
-        self.executor = executor
-    }
+actor GitWorktreeService {
 
     func listWorktrees(at repoPath: String) async throws -> [WorktreeInfo] {
-        let output = try await executor.executeGit(arguments: ["worktree", "list", "--porcelain"], at: repoPath)
-        return parseWorktreeList(output, repositoryPath: repoPath)
+        return try await Task.detached {
+            let repo = try Libgit2Repository(path: repoPath)
+            let worktrees = try repo.listWorktrees()
+
+            return worktrees.map { wt in
+                // Get commit hash for the worktree
+                var commit = ""
+                if let wtPath = wt.path.isEmpty ? nil : wt.path {
+                    if let wtRepo = try? Libgit2Repository(path: wtPath) {
+                        if let log = try? wtRepo.log(limit: 1), let first = log.first {
+                            commit = first.shortOid
+                        }
+                    }
+                }
+
+                // Determine branch name
+                let branchName: String
+                let isDetached: Bool
+                if let branch = wt.branch {
+                    branchName = branch
+                    isDetached = false
+                } else if commit.isEmpty {
+                    // No commits yet - try to get branch name from HEAD symbolic ref
+                    branchName = Self.getInitialBranchName(at: wt.path) ?? "main"
+                    isDetached = false
+                } else {
+                    branchName = "detached at \(commit.prefix(7))"
+                    isDetached = true
+                }
+
+                return WorktreeInfo(
+                    path: wt.path,
+                    branch: branchName,
+                    commit: commit,
+                    isPrimary: wt.isMain,
+                    isDetached: isDetached
+                )
+            }
+        }.value
+    }
+
+    private static func getInitialBranchName(at path: String) -> String? {
+        // Read HEAD file to get initial branch for empty repos
+        let headPath = (path as NSString).appendingPathComponent(".git/HEAD")
+        guard let content = try? String(contentsOfFile: headPath, encoding: .utf8) else {
+            return nil
+        }
+        // Format: "ref: refs/heads/main\n"
+        if content.hasPrefix("ref: refs/heads/") {
+            let branch = content.dropFirst("ref: refs/heads/".count).trimmingCharacters(in: .whitespacesAndNewlines)
+            return branch.isEmpty ? nil : branch
+        }
+        return nil
     }
 
     func addWorktree(at repoPath: String, path: String, branch: String, createBranch: Bool = false, baseBranch: String? = nil) async throws {
-        var arguments = ["worktree", "add"]
+        try await Task.detached {
+            let repo = try Libgit2Repository(path: repoPath)
 
-        if createBranch {
-            arguments.append("-b")
-            arguments.append(branch)
-        }
+            // Generate a unique worktree name from the path
+            let worktreeName = URL(fileURLWithPath: path).lastPathComponent
 
-        arguments.append(path)
-
-        // If creating a new branch, specify the base branch
-        if createBranch, let baseBranch = baseBranch {
-            arguments.append(baseBranch)
-        } else if !createBranch {
-            // If not creating, just checkout the existing branch
-            arguments.append(branch)
-        }
-
-        try await executeVoid(arguments, at: repoPath)
+            try repo.addWorktree(
+                name: worktreeName,
+                path: path,
+                branch: branch,
+                createBranch: createBranch,
+                baseBranch: baseBranch
+            )
+        }.value
 
         // Pull LFS objects if LFS is enabled in the repository
         // This is a best-effort operation - don't fail worktree creation if LFS pull fails
         do {
             try await pullLFSObjects(at: path)
         } catch {
-            // LFS pull failed (e.g., due to uncommitted changes, no remote, etc.)
-            // This is non-fatal - the worktree is already created successfully
+            // LFS pull failed - non-fatal
         }
     }
 
     func pullLFSObjects(at worktreePath: String) async throws {
-        // Check if git-lfs is installed and repository uses LFS
-        do {
-            let lfsFiles = try await executor.executeGit(arguments: ["lfs", "ls-files"], at: worktreePath)
+        // LFS operations still require shell commands as libgit2 doesn't support LFS
+        try await Task.detached {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+            process.arguments = ["lfs", "ls-files"]
+            process.currentDirectoryURL = URL(fileURLWithPath: worktreePath)
 
-            // If LFS is being used (command succeeds and has output), pull the objects
-            if !lfsFiles.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                try await executeVoid(["lfs", "pull"], at: worktreePath)
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = FileHandle.nullDevice
+
+            try process.run()
+            process.waitUntilExit()
+
+            guard process.terminationStatus == 0 else { return }
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? ""
+
+            // If LFS is being used, pull the objects
+            if !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let pullProcess = Process()
+                pullProcess.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+                pullProcess.arguments = ["lfs", "pull"]
+                pullProcess.currentDirectoryURL = URL(fileURLWithPath: worktreePath)
+                pullProcess.standardOutput = FileHandle.nullDevice
+                pullProcess.standardError = FileHandle.nullDevice
+
+                try pullProcess.run()
+                pullProcess.waitUntilExit()
             }
-        } catch {
-            // LFS not installed or not used in this repo - skip silently
-            // This is expected behavior, not an error
-        }
+        }.value
     }
 
     func removeWorktree(at worktreePath: String, repoPath: String, force: Bool = false) async throws {
-        var arguments = ["worktree", "remove"]
+        try await Task.detached {
+            let repo = try Libgit2Repository(path: repoPath)
 
-        if force {
-            arguments.append("--force")
-        }
-
-        arguments.append(worktreePath)
-
-        try await executeVoid(arguments, at: repoPath)
-    }
-
-    // MARK: - Private Helpers
-
-    private func parseWorktreeList(_ output: String, repositoryPath: String) -> [WorktreeInfo] {
-        var worktrees: [WorktreeInfo] = []
-        var currentWorktree: [String: String] = [:]
-
-        // Use components(separatedBy:) instead of split() to preserve empty strings
-        let lines = output.components(separatedBy: "\n")
-
-        for line in lines {
-            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
-            if trimmedLine.isEmpty {
-                if let path = currentWorktree["worktree"],
-                   let commit = currentWorktree["HEAD"] {
-
-                    let isDetached = currentWorktree["detached"] != nil
-                    let cleanBranch: String
-
-                    if let branch = currentWorktree["branch"] {
-                        cleanBranch = branch.replacingOccurrences(of: "refs/heads/", with: "")
-                    } else {
-                        cleanBranch = "detached at \(String(commit.prefix(7)))"
-                    }
-
-                    let isPrimary = path == repositoryPath
-
-                    worktrees.append(WorktreeInfo(
-                        path: path,
-                        branch: cleanBranch,
-                        commit: commit,
-                        isPrimary: isPrimary,
-                        isDetached: isDetached
-                    ))
-                }
-                currentWorktree.removeAll()
-                continue
+            // Find worktree name from path
+            let worktrees = try repo.listWorktrees()
+            guard let worktree = worktrees.first(where: { $0.path == worktreePath }) else {
+                throw Libgit2Error.worktreeNotFound(worktreePath)
             }
 
-            let components = trimmedLine.split(separator: " ", maxSplits: 1).map(String.init)
-            if components.count == 2 {
-                currentWorktree[components[0]] = components[1]
-            } else if components.count == 1 && components[0] == "detached" {
-                currentWorktree["detached"] = "true"
-            }
-        }
-
-        // Handle last worktree
-        if let path = currentWorktree["worktree"],
-           let commit = currentWorktree["HEAD"] {
-
-            let isDetached = currentWorktree["detached"] != nil
-            let cleanBranch: String
-
-            if let branch = currentWorktree["branch"] {
-                cleanBranch = branch.replacingOccurrences(of: "refs/heads/", with: "")
-            } else {
-                cleanBranch = "detached at \(String(commit.prefix(7)))"
-            }
-
-            let isPrimary = path == repositoryPath
-
-            worktrees.append(WorktreeInfo(
-                path: path,
-                branch: cleanBranch,
-                commit: commit,
-                isPrimary: isPrimary,
-                isDetached: isDetached
-            ))
-        }
-
-        return worktrees
+            try repo.removeWorktree(name: worktree.name, force: force)
+        }.value
     }
 }
