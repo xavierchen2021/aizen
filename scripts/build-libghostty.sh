@@ -80,9 +80,9 @@ echo "Creating universal binary..."
 mkdir -p "${VENDOR_DIR}/lib" "${VENDOR_DIR}/include"
 lipo -create "${ARM64_LIB}" "${X64_LIB}" -output "${VENDOR_DIR}/lib/libghostty.a"
 
-# Copy headers
+# Copy headers (preserve module.modulemap which is custom)
 if [ -d "${WORKDIR}/ghostty/include" ]; then
-    rsync -a --delete "${WORKDIR}/ghostty/include/" "${VENDOR_DIR}/include/"
+    rsync -a --exclude='module.modulemap' "${WORKDIR}/ghostty/include/" "${VENDOR_DIR}/include/"
 fi
 
 # Record version
