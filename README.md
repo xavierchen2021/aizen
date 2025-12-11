@@ -43,19 +43,30 @@ Aizen is a macOS workspace for developers who work on multiple branches in paral
 ## Requirements
 
 - macOS 13.5+
-- Apple Silicon
+- Apple Silicon or Intel Mac
 
 ### Building from Source
 
 - Xcode 16.0+
 - Swift 5.0+
 - Git LFS
+- Zig (for building libghostty): `brew install zig`
 
 ```bash
 git lfs install
 git clone https://github.com/vivy-company/aizen.git
 cd aizen
+
+# Build libghostty (universal arm64 + x86_64)
+./scripts/build-libghostty.sh
+
+# Open in Xcode and build
 open aizen.xcodeproj
+```
+
+To rebuild libghostty at a specific commit:
+```bash
+./scripts/build-libghostty.sh <commit-sha>
 ```
 
 ## Installation
