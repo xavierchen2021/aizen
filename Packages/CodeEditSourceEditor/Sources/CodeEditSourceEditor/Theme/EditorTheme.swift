@@ -119,6 +119,12 @@ public struct EditorTheme: Equatable {
             return types // Statement labels (Swift, Go, etc.)
         case .stringRegex:
             return strings // Regular expressions
+        case .punctuationBracket:
+            return text // Brackets like (), [], {}
+        case .attribute:
+            return attributes // Swift attributes like @available
+        case .spell:
+            return text // Spell-check marker, no special color
         default: return text
         }
     }

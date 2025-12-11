@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 
 # Organize Ghostty resources from Xcode's flattened copy into proper directory structure

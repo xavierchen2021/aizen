@@ -53,6 +53,7 @@ public final class TreeSitterState {
         layers.removeAll()
 
         primaryLayer = codeLanguage
+        let query = TreeSitterModel.shared.query(for: codeLanguage.id)
         layers = [
             LanguageLayer(
                 id: codeLanguage.id,
@@ -60,7 +61,7 @@ public final class TreeSitterState {
                 parser: Parser(),
                 supportsInjections: codeLanguage.additionalHighlights?.contains("injections") ?? false,
                 tree: nil,
-                languageQuery: TreeSitterModel.shared.query(for: codeLanguage.id),
+                languageQuery: query,
                 ranges: []
             )
         ]

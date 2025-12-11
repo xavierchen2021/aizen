@@ -50,6 +50,9 @@ public enum CaptureName: Int8, CaseIterable, Sendable {
     case label
     case `operator`
     case stringRegex
+    case punctuationBracket
+    case attribute
+    case spell
 
     var alternate: CaptureName {
         switch self {
@@ -141,6 +144,12 @@ public enum CaptureName: Int8, CaseIterable, Sendable {
             return .operator
         case "string.regex":
             return .stringRegex
+        case "punctuation.bracket":
+            return .punctuationBracket
+        case "attribute":
+            return .attribute
+        case "spell":
+            return .spell
         default:
             return nil
         }
@@ -223,6 +232,12 @@ public enum CaptureName: Int8, CaseIterable, Sendable {
             return "operator"
         case .stringRegex:
             return "string.regex"
+        case .punctuationBracket:
+            return "punctuation.bracket"
+        case .attribute:
+            return "attribute"
+        case .spell:
+            return "spell"
         }
     }
 }

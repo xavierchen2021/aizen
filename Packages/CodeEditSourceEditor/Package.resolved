@@ -32,8 +32,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/lukepistrol/SwiftLintPlugin",
       "state" : {
-        "revision" : "3780efccceaa87f17ec39638a9d263d0e742b71c",
-        "version" : "0.59.1"
+        "revision" : "9bbc46a4cf8275ceb39334f6276b6b215d67d5d5",
+        "version" : "0.62.2"
       }
     },
     {
@@ -77,8 +77,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pointfreeco/xctest-dynamic-overlay",
       "state" : {
-        "revision" : "39de59b2d47f7ef3ca88a039dff3084688fe27f4",
-        "version" : "1.5.2"
+        "revision" : "31073495cae9caf243c440eac94b3ab067e3d7bc",
+        "version" : "1.8.0"
       }
     }
   ],

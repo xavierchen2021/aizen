@@ -18,10 +18,9 @@ let package = Package(
         .package(
             path: "../CodeEditTextView"
         ),
-        // tree-sitter languages (remote - has complex submodules)
+        // tree-sitter languages (local)
         .package(
-            url: "https://github.com/CodeEditApp/CodeEditLanguages.git",
-            branch: "main"
+            path: "../CodeEditLanguages"
         ),
         // CodeEditSymbols
         .package(
