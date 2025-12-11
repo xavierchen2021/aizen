@@ -2,6 +2,7 @@ import { serve } from "bun";
 import index from "./index.html";
 
 const server = serve({
+  port: 8787,
   routes: {
     "/": index,
     "/robots.txt": Bun.file("./src/robots.txt"),
