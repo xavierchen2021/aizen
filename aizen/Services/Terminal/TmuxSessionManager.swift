@@ -244,7 +244,7 @@ actor TmuxSessionManager {
         let sessionName = sessionPrefix + paneId
         let escapedDir = workingDirectory.replacingOccurrences(of: "'", with: "'\\''")
 
-        return "\(tmux) -f '\(configPath)' new-session -A -s \(sessionName) -c '\(escapedDir)' \\; source-file '\(configPath)'"
+        return "\(tmux) -f '\(configPath)' new-session -A -s \(sessionName) -c '\(escapedDir)'"
     }
 }
 
