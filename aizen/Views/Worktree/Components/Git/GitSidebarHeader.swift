@@ -6,6 +6,11 @@ struct GitSidebarHeader: View {
     let hasUnstagedChanges: Bool
     let onStageAll: (@escaping () -> Void) -> Void
     let onUnstageAll: () -> Void
+    let onDiscardAll: () -> Void
+    let onCleanUntracked: () -> Void
+
+    @State private var showDiscardConfirmation = false
+    @State private var showCleanConfirmation = false
 
     var body: some View {
         HStack {
@@ -30,9 +35,49 @@ struct GitSidebarHeader: View {
             .buttonStyle(.borderless)
             .font(.system(size: 11))
             .disabled(isOperationPending || (gitStatus.stagedFiles.isEmpty && gitStatus.modifiedFiles.isEmpty && gitStatus.untrackedFiles.isEmpty))
+
+            Menu {
+                Button {
+                    showDiscardConfirmation = true
+                } label: {
+                    Label("Discard All Changes", systemImage: "arrow.uturn.backward")
+                }
+                .disabled(gitStatus.stagedFiles.isEmpty && gitStatus.modifiedFiles.isEmpty)
+
+                Button {
+                    showCleanConfirmation = true
+                } label: {
+                    Label("Remove Untracked Files", systemImage: "trash")
+                }
+                .disabled(gitStatus.untrackedFiles.isEmpty)
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .frame(width: 20)
+            .disabled(isOperationPending)
         }
         .padding(.horizontal, 12)
         .frame(height: 44)
+        .alert("Discard All Changes?", isPresented: $showDiscardConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Discard", role: .destructive) {
+                onDiscardAll()
+            }
+        } message: {
+            Text("This will reset all staged and modified files to HEAD. This cannot be undone.")
+        }
+        .alert("Remove Untracked Files?", isPresented: $showCleanConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Remove", role: .destructive) {
+                onCleanUntracked()
+            }
+        } message: {
+            Text("This will permanently delete \(gitStatus.untrackedFiles.count) untracked file(s). This cannot be undone.")
+        }
     }
 
     private var headerTitle: String {

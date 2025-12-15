@@ -73,6 +73,8 @@ struct SessionTabsScrollView: View {
     var onCreateTerminalWithPreset: ((TerminalPreset) -> Void)?
 
     @State private var scrollViewProxy: ScrollViewProxy?
+    @State private var sessionToClose: TerminalSession?
+    @State private var showCloseConfirmation = false
 
     var body: some View {
         HStack(spacing: 4) {
@@ -134,6 +136,45 @@ struct SessionTabsScrollView: View {
             )
             .padding(.trailing, 8)
         }
+        .alert("Close Terminal?", isPresented: $showCloseConfirmation) {
+            Button("Cancel", role: .cancel) {
+                sessionToClose = nil
+            }
+            Button("Close", role: .destructive) {
+                if let session = sessionToClose {
+                    onCloseTerminalSession(session)
+                    sessionToClose = nil
+                }
+            }
+        } message: {
+            Text("A process is still running in this terminal. Are you sure you want to close it?")
+        }
+    }
+
+    // MARK: - Terminal Close with Confirmation
+
+    private func requestCloseTerminalSession(_ session: TerminalSession) {
+        guard let sessionId = session.id else {
+            onCloseTerminalSession(session)
+            return
+        }
+
+        // Get pane IDs from layout
+        let paneIds: [String]
+        if let layoutJSON = session.splitLayout,
+           let layout = SplitLayoutHelper.decode(layoutJSON) {
+            paneIds = layout.allPaneIds()
+        } else {
+            paneIds = ["main"]
+        }
+
+        // Check if any pane has a running process
+        if TerminalSessionManager.shared.hasRunningProcess(for: sessionId, paneIds: paneIds) {
+            sessionToClose = session
+            showCloseConfirmation = true
+        } else {
+            onCloseTerminalSession(session)
+        }
     }
 
     // MARK: - Chat Tab View
@@ -172,7 +213,7 @@ struct SessionTabsScrollView: View {
         ) {
             HStack(spacing: 6) {
                 Button {
-                    onCloseTerminalSession(session)
+                    requestCloseTerminalSession(session)
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 10))
@@ -221,7 +262,7 @@ struct SessionTabsScrollView: View {
     @ViewBuilder
     private func terminalContextMenu(session: TerminalSession, index: Int) -> some View {
         Button("Close Tab") {
-            onCloseTerminalSession(session)
+            requestCloseTerminalSession(session)
         }
 
         if index > 0 {

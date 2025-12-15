@@ -40,10 +40,17 @@ actor GitStagingService {
     }
 
     func unstageAll(at path: String) async throws {
-        try await Task.detached {
-            let repo = try Libgit2Repository(path: path)
-            try repo.unstageAll()
-        }.value
+        logger.info("unstageAll called - path: \(path)")
+        do {
+            try await Task.detached {
+                let repo = try Libgit2Repository(path: path)
+                try repo.unstageAll()
+            }.value
+            logger.info("unstageAll succeeded")
+        } catch {
+            logger.error("unstageAll failed: \(error.localizedDescription)")
+            throw error
+        }
     }
 
     func commit(at path: String, message: String) async throws {
@@ -73,6 +80,20 @@ actor GitStagingService {
         try await Task.detached {
             let repo = try Libgit2Repository(path: path)
             try repo.discardChanges(file)
+        }.value
+    }
+
+    func discardAll(at path: String) async throws {
+        try await Task.detached {
+            let repo = try Libgit2Repository(path: path)
+            try repo.discardAllChanges()
+        }.value
+    }
+
+    func cleanUntracked(at path: String) async throws {
+        try await Task.detached {
+            let repo = try Libgit2Repository(path: path)
+            try repo.cleanUntrackedFiles()
         }.value
     }
 }

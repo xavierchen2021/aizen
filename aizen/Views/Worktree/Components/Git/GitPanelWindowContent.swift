@@ -203,6 +203,14 @@ struct GitPanelWindowContent: View {
                 gitOperations.unstageAll()
                 reloadDiff()
             },
+            onDiscardAll: {
+                gitOperations.discardAll()
+                reloadDiff()
+            },
+            onCleanUntracked: {
+                gitOperations.cleanUntracked()
+                reloadDiff()
+            },
             onCommit: { message in
                 gitOperations.commit(message)
                 reloadDiff()

@@ -91,7 +91,8 @@ actor XcodeLogService {
     private func runMacLogStream(bundleId: String, processName: String, continuation: AsyncStream<String>.Continuation) async {
         let process = Process()
 
-        let predicate = "(subsystem BEGINSWITH '\(bundleId)') OR (process == '\(processName)') OR (processImagePath CONTAINS '\(processName)')"
+        // Only show logs from the app's subsystem - excludes all Apple framework noise
+        let predicate = "subsystem BEGINSWITH '\(bundleId)'"
 
         process.executableURL = URL(fileURLWithPath: "/usr/bin/log")
         process.arguments = [
@@ -202,9 +203,8 @@ actor XcodeLogService {
     private func runLogStream(bundleId: String, destination: XcodeDestination, continuation: AsyncStream<String>.Continuation) async {
         let process = Process()
 
-        // Extract app name from bundle ID (last component)
-        let appName = bundleId.components(separatedBy: ".").last ?? bundleId
-        let predicate = "(subsystem BEGINSWITH '\(bundleId)') OR (process == '\(appName)') OR (processImagePath CONTAINS '\(appName)')"
+        // Only show logs from the app's subsystem - excludes all Apple framework noise
+        let predicate = "subsystem BEGINSWITH '\(bundleId)'"
 
         // For simulators, use xcrun simctl spawn to access the simulator's log stream
         process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")

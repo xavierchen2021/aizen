@@ -13,8 +13,13 @@ class GitPanelWindowController: NSWindowController {
     private var windowDelegate: GitPanelWindowDelegate?
 
     convenience init(context: GitChangesContext, repositoryManager: RepositoryManager, onClose: @escaping () -> Void) {
+        // Calculate 80% of main window size, with fallback defaults
+        let mainWindowFrame = NSApp.mainWindow?.frame ?? NSRect(x: 0, y: 0, width: 1400, height: 900)
+        let width = max(900, mainWindowFrame.width * 0.8)
+        let height = max(600, mainWindowFrame.height * 0.8)
+
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
+            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
             styleMask: [.titled, .closable, .resizable, .miniaturizable],
             backing: .buffered,
             defer: false

@@ -81,11 +81,8 @@ class XcodeBuildManager: ObservableObject {
             let project = await self.projectDetector.detectProject(at: path)
 
             guard let project = project else {
-                self.logger.debug("No Xcode project found at \(path)")
                 return  // isReady stays false
             }
-
-            self.logger.info("Detected Xcode project: \(project.displayName) with \(project.schemes.count) schemes")
 
             // Load cached destinations immediately (non-blocking)
             self.loadCachedDestinations()
@@ -142,8 +139,6 @@ class XcodeBuildManager: ObservableObject {
             self.selectedDestination = availableDestinations[.simulator]?.first { $0.platform == "iOS" }
                 ?? availableDestinations[.mac]?.first
         }
-
-        logger.debug("Loaded \(cached.destinations.count) cached destinations")
     }
 
     private func cacheDestinations(_ destinations: [DestinationType: [XcodeDestination]]) {
@@ -179,7 +174,6 @@ class XcodeBuildManager: ObservableObject {
                 }
             }
 
-            logger.info("Loaded \(destinations.values.flatMap { $0 }.count) destinations")
         } catch {
             logger.error("Failed to load destinations: \(error.localizedDescription)")
         }
@@ -370,8 +364,6 @@ class XcodeBuildManager: ObservableObject {
             // Start monitoring if the app is still running
             startAppMonitoring()
 
-            logger.info("Launched \(executablePath) with PID \(pid)")
-
         } catch {
             logger.error("Failed to launch on Mac: \(error.localizedDescription)")
             await MainActor.run {
@@ -425,8 +417,6 @@ class XcodeBuildManager: ObservableObject {
             // Start monitoring if the devicectl process is still running
             startAppMonitoring()
 
-            logger.info("Launched \(bundleId) on device \(destination.name)")
-
         } catch {
             logger.error("Failed to launch on device: \(error.localizedDescription)")
             await MainActor.run {
@@ -440,7 +430,6 @@ class XcodeBuildManager: ObservableObject {
         if let process = await MainActor.run(body: { self.launchedProcess }) {
             if process.isRunning {
                 process.terminate()
-                logger.debug("Terminated previous app process")
                 try? await Task.sleep(nanoseconds: 300_000_000)
             }
             return
@@ -448,38 +437,25 @@ class XcodeBuildManager: ObservableObject {
 
         // Fallback: terminate by PID if we don't have process reference
         if let pid = await MainActor.run(body: { self.launchedPID }) {
-            do {
-                _ = try await ProcessExecutor.shared.execute(
-                    executable: "/bin/kill",
-                    arguments: [String(pid)]
-                )
-                logger.debug("Terminated previous app with PID \(pid)")
-                try? await Task.sleep(nanoseconds: 300_000_000)
-            } catch {
-                logger.debug("Failed to terminate previous app: \(error.localizedDescription)")
-            }
+            _ = try? await ProcessExecutor.shared.execute(
+                executable: "/bin/kill",
+                arguments: [String(pid)]
+            )
+            try? await Task.sleep(nanoseconds: 300_000_000)
         }
     }
 
     private func getPIDForApp(appPath: String) async -> Int32? {
-        // Use pgrep to find the PID of the app we just launched
         let appName = (appPath as NSString).lastPathComponent.replacingOccurrences(of: ".app", with: "")
 
-        do {
-            let result = try await ProcessExecutor.shared.executeWithOutput(
-                executable: "/usr/bin/pgrep",
-                arguments: ["-n", appName] // -n returns newest matching process
-            )
-
-            if let pid = Int32(result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) {
-                logger.debug("Found PID \(pid) for \(appName)")
-                return pid
-            }
-        } catch {
-            logger.debug("Failed to get PID for app: \(error.localizedDescription)")
+        guard let result = try? await ProcessExecutor.shared.executeWithOutput(
+            executable: "/usr/bin/pgrep",
+            arguments: ["-n", appName]
+        ) else {
+            return nil
         }
 
-        return nil
+        return Int32(result.stdout.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     private func startAppMonitoring() {

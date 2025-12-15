@@ -57,9 +57,42 @@ struct WorktreeSessionManager {
 
     func closeTerminalSession(_ session: TerminalSession) {
         guard let context = worktree.managedObjectContext else { return }
+        guard !session.isDeleted else { return }
 
-        // Best effort: tear down any tmux sessions backing this terminal tab.
-        if let layoutJSON = session.splitLayout,
+        // Capture values before any mutations
+        let sessionId = session.id
+        let layoutJSON = session.splitLayout
+
+        // Update selection first (before delete) to prevent accessing deleted object
+        if viewModel.selectedTerminalSessionId == sessionId {
+            let currentSessions = terminalSessions
+            if let index = currentSessions.firstIndex(where: { $0.id == sessionId }) {
+                if index > 0 {
+                    viewModel.selectedTerminalSessionId = currentSessions[index - 1].id
+                } else if currentSessions.count > 1 {
+                    viewModel.selectedTerminalSessionId = currentSessions[index + 1].id
+                } else {
+                    viewModel.selectedTerminalSessionId = nil
+                }
+            }
+        }
+
+        // Clean up terminal views
+        if let id = sessionId {
+            TerminalSessionManager.shared.removeAllTerminals(for: id)
+        }
+
+        // Delete from Core Data
+        context.delete(session)
+
+        do {
+            try context.save()
+        } catch {
+            logger.error("Failed to delete terminal session: \(error.localizedDescription)")
+        }
+
+        // Best effort: tear down any tmux sessions backing this terminal tab (after Core Data save)
+        if let layoutJSON = layoutJSON,
            let layout = SplitLayoutHelper.decode(layoutJSON) {
             let paneIds = layout.allPaneIds()
             Task {
@@ -67,30 +100,6 @@ struct WorktreeSessionManager {
                     await tmuxManager.killSession(paneId: paneId)
                 }
             }
-        }
-
-        if let id = session.id {
-            TerminalSessionManager.shared.removeAllTerminals(for: id)
-        }
-
-        if viewModel.selectedTerminalSessionId == session.id {
-            if let index = terminalSessions.firstIndex(where: { $0.id == session.id }) {
-                if index > 0 {
-                    viewModel.selectedTerminalSessionId = terminalSessions[index - 1].id
-                } else if terminalSessions.count > 1 {
-                    viewModel.selectedTerminalSessionId = terminalSessions[index + 1].id
-                } else {
-                    viewModel.selectedTerminalSessionId = nil
-                }
-            }
-        }
-
-        context.delete(session)
-
-        do {
-            try context.save()
-        } catch {
-            logger.error("Failed to delete terminal session: \(error.localizedDescription)")
         }
     }
 

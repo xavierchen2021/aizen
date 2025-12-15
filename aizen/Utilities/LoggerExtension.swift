@@ -9,9 +9,12 @@ import Foundation
 import os.log
 
 extension Logger {
+    /// The app's logging subsystem - must match bundle identifier for proper filtering
+    private static let appSubsystem = Bundle.main.bundleIdentifier ?? "win.aizen.app"
+
     /// Create a logger for a specific category
     nonisolated static func forCategory(_ category: String) -> Logger {
-        Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.aizen", category: category)
+        Logger(subsystem: appSubsystem, category: category)
     }
 
     /// Convenience logger instances for common categories

@@ -117,7 +117,6 @@ actor XcodeBuildService {
         currentProcess = process
 
         do {
-            logger.info("Starting build: xcodebuild \(arguments.joined(separator: " "))")
             try process.run()
 
             // Use async termination instead of blocking waitUntilExit

@@ -14,6 +14,8 @@ struct GitSidebarView: View {
     var onUnstageFile: (String) -> Void
     var onStageAll: (@escaping () -> Void) -> Void
     var onUnstageAll: () -> Void
+    var onDiscardAll: () -> Void
+    var onCleanUntracked: () -> Void
     var onCommit: (String) -> Void
     var onAmendCommit: (String) -> Void
     var onCommitWithSignoff: (String) -> Void
@@ -29,7 +31,9 @@ struct GitSidebarView: View {
                 isOperationPending: isOperationPending,
                 hasUnstagedChanges: hasUnstagedChanges,
                 onStageAll: onStageAll,
-                onUnstageAll: onUnstageAll
+                onUnstageAll: onUnstageAll,
+                onDiscardAll: onDiscardAll,
+                onCleanUntracked: onCleanUntracked
             )
 
             Divider()
@@ -90,6 +94,8 @@ struct GitSidebarView: View {
         onUnstageFile: { _ in },
         onStageAll: { completion in completion() },
         onUnstageAll: {},
+        onDiscardAll: {},
+        onCleanUntracked: {},
         onCommit: { _ in },
         onAmendCommit: { _ in },
         onCommitWithSignoff: { _ in },

@@ -39,6 +39,14 @@ struct WorktreeGitOperations {
         handler.unstageAll()
     }
 
+    func discardAll() {
+        handler.discardAll()
+    }
+
+    func cleanUntracked() {
+        handler.cleanUntracked()
+    }
+
     func commit(_ message: String) {
         handler.commit(message)
     }

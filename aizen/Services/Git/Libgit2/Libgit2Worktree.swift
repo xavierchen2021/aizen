@@ -227,10 +227,13 @@ extension Libgit2Repository {
         var opts = git_worktree_prune_options()
         git_worktree_prune_options_init(&opts, UInt32(GIT_WORKTREE_PRUNE_OPTIONS_VERSION))
 
+        // GIT_WORKTREE_PRUNE_VALID is required to prune valid working trees
+        // GIT_WORKTREE_PRUNE_WORKING_TREE removes the working tree directory
+        // GIT_WORKTREE_PRUNE_LOCKED is only used with force to remove locked worktrees
         if force {
             opts.flags = UInt32(GIT_WORKTREE_PRUNE_WORKING_TREE.rawValue) | UInt32(GIT_WORKTREE_PRUNE_VALID.rawValue) | UInt32(GIT_WORKTREE_PRUNE_LOCKED.rawValue)
         } else {
-            opts.flags = UInt32(GIT_WORKTREE_PRUNE_WORKING_TREE.rawValue)
+            opts.flags = UInt32(GIT_WORKTREE_PRUNE_WORKING_TREE.rawValue) | UInt32(GIT_WORKTREE_PRUNE_VALID.rawValue)
         }
 
         // Check if prunable

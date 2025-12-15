@@ -15,7 +15,7 @@ import OSLog
 actor TmuxSessionManager {
     static let shared = TmuxSessionManager()
 
-    private static let logger = Logger(subsystem: "com.aizen.app", category: "TmuxSessionManager")
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "win.aizen.app", category: "TmuxSessionManager")
     private let sessionPrefix = "aizen-"
 
     private init() {}

@@ -58,6 +58,30 @@ class GitOperationHandler {
         )
     }
 
+    func discardAll() {
+        gitService.discardAll(
+            onSuccess: {
+                ToastManager.shared.show("All changes discarded", type: .success)
+            },
+            onError: { [logger] error in
+                ToastManager.shared.show("Failed to discard changes", type: .error)
+                logger.error("Failed to discard all changes: \(error)")
+            }
+        )
+    }
+
+    func cleanUntracked() {
+        gitService.cleanUntracked(
+            onSuccess: {
+                ToastManager.shared.show("Untracked files removed", type: .success)
+            },
+            onError: { [logger] error in
+                ToastManager.shared.show("Failed to remove untracked files", type: .error)
+                logger.error("Failed to clean untracked files: \(error)")
+            }
+        )
+    }
+
     // MARK: - Commit Operations
 
     func commit(_ message: String) {

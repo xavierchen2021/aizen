@@ -72,6 +72,28 @@ class GitRepositoryService: ObservableObject {
         }
     }
 
+    func discardAll(onSuccess: (() -> Void)? = nil, onError: ((Error) -> Void)? = nil) {
+        Task { [weak self] in
+            guard let self = self else { return }
+            await self.executeOperationBackground(
+                { try await self.stagingService.discardAll(at: self.worktreePath) },
+                onSuccess: self.makeRefreshingSuccessHandler(original: onSuccess),
+                onError: onError
+            )
+        }
+    }
+
+    func cleanUntracked(onSuccess: (() -> Void)? = nil, onError: ((Error) -> Void)? = nil) {
+        Task { [weak self] in
+            guard let self = self else { return }
+            await self.executeOperationBackground(
+                { try await self.stagingService.cleanUntracked(at: self.worktreePath) },
+                onSuccess: self.makeRefreshingSuccessHandler(original: onSuccess),
+                onError: onError
+            )
+        }
+    }
+
     func commit(message: String, onSuccess: (() -> Void)? = nil, onError: ((Error) -> Void)? = nil) {
         Task { [weak self] in
             guard let self = self else { return }

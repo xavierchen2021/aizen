@@ -221,12 +221,11 @@ extension Libgit2Repository {
         var patterns: [UnsafeMutablePointer<CChar>?] = [strdup("*")]
         defer { patterns.forEach { free($0) } }
 
-        patterns.withUnsafeMutableBufferPointer { buffer in
+        let addError: Int32 = patterns.withUnsafeMutableBufferPointer { buffer in
             pathspec.strings = buffer.baseAddress
             pathspec.count = 1
+            return git_index_add_all(index, &pathspec, 0, nil, nil)
         }
-
-        let addError = git_index_add_all(index, &pathspec, 0, nil, nil)
         guard addError == 0 else {
             throw Libgit2Error.from(addError, context: "index add all")
         }
@@ -264,12 +263,11 @@ extension Libgit2Repository {
             var patterns: [UnsafeMutablePointer<CChar>?] = [strdup(filePath)]
             defer { patterns.forEach { free($0) } }
 
-            patterns.withUnsafeMutableBufferPointer { buffer in
+            let resetError: Int32 = patterns.withUnsafeMutableBufferPointer { buffer in
                 pathspec.strings = buffer.baseAddress
                 pathspec.count = 1
+                return git_reset_default(ptr, c, &pathspec)
             }
-
-            let resetError = git_reset_default(ptr, c, &pathspec)
             guard resetError == 0 else {
                 throw Libgit2Error.from(resetError, context: "unstage '\(filePath)'")
             }
@@ -296,23 +294,17 @@ extension Libgit2Repository {
             throw Libgit2Error.notARepository(path)
         }
 
-        var head: OpaquePointer?
-        let headError = git_repository_head(&head, ptr)
+        // Get current status to find staged files
+        let currentStatus = try status()
+        let stagedPaths = currentStatus.staged.map { $0.path }
 
-        if headError == 0, let h = head {
-            defer { git_reference_free(h) }
+        guard !stagedPaths.isEmpty else {
+            return // Nothing to unstage
+        }
 
-            var commit: OpaquePointer?
-            let peelError = git_reference_peel(&commit, h, GIT_OBJECT_COMMIT)
-            guard peelError == 0, let c = commit else {
-                throw Libgit2Error.from(peelError, context: "peel HEAD")
-            }
-            defer { git_object_free(c) }
-
-            let resetError = git_reset_default(ptr, c, nil)
-            guard resetError == 0 else {
-                throw Libgit2Error.from(resetError, context: "reset default all")
-            }
+        // Unstage each file individually
+        for path in stagedPaths {
+            try unstageFile(path)
         }
     }
 
@@ -330,15 +322,63 @@ extension Libgit2Repository {
         var patterns: [UnsafeMutablePointer<CChar>?] = [strdup(filePath)]
         defer { patterns.forEach { free($0) } }
 
-        patterns.withUnsafeMutableBufferPointer { buffer in
+        let checkoutError: Int32 = patterns.withUnsafeMutableBufferPointer { buffer in
             pathspec.strings = buffer.baseAddress
             pathspec.count = 1
+            opts.paths = pathspec
+            return git_checkout_index(ptr, nil, &opts)
         }
-        opts.paths = pathspec
-
-        let checkoutError = git_checkout_index(ptr, nil, &opts)
         guard checkoutError == 0 else {
             throw Libgit2Error.from(checkoutError, context: "checkout index")
+        }
+    }
+
+    /// Discard all changes (reset working tree to HEAD)
+    func discardAllChanges() throws {
+        guard let ptr = pointer else {
+            throw Libgit2Error.notARepository(path)
+        }
+
+        // Get HEAD commit
+        var head: OpaquePointer?
+        let headError = git_repository_head(&head, ptr)
+        guard headError == 0, let h = head else {
+            throw Libgit2Error.from(headError, context: "get HEAD")
+        }
+        defer { git_reference_free(h) }
+
+        var commit: OpaquePointer?
+        let peelError = git_reference_peel(&commit, h, GIT_OBJECT_COMMIT)
+        guard peelError == 0, let c = commit else {
+            throw Libgit2Error.from(peelError, context: "peel HEAD")
+        }
+        defer { git_object_free(c) }
+
+        // Hard reset to HEAD - this resets both index and working tree
+        let resetError = git_reset(ptr, c, GIT_RESET_HARD, nil)
+        guard resetError == 0 else {
+            throw Libgit2Error.from(resetError, context: "reset hard")
+        }
+    }
+
+    /// Remove untracked files from working directory
+    func cleanUntrackedFiles() throws {
+        guard pointer != nil else {
+            throw Libgit2Error.notARepository(path)
+        }
+
+        // Get status to find untracked files
+        let currentStatus = try status()
+        let untrackedPaths = currentStatus.untracked.map { $0.path }
+
+        guard !untrackedPaths.isEmpty else {
+            return // Nothing to clean
+        }
+
+        let fileManager = FileManager.default
+        for relativePath in untrackedPaths {
+            let fullPath = (path as NSString).appendingPathComponent(relativePath)
+            try? fileManager.removeItem(atPath: fullPath)
         }
     }
 }

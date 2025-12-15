@@ -42,7 +42,7 @@ class GhosttyTerminalView: NSView {
     var onProgressReport: ((GhosttyProgressState, Int?) -> Void)?
     private var didSignalReady = false
 
-    private static let logger = Logger(subsystem: "com.aizen.app", category: "GhosttyTerminal")
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "win.aizen.app", category: "GhosttyTerminal")
 
     // MARK: - Handler Components
 
