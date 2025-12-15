@@ -86,7 +86,15 @@ struct TerminalViewWrapper: NSViewRepresentable {
                 onReady()
             }
 
-            return existingTerminal
+            // Get or create scroll view wrapper
+            if let scrollView = sessionManager.getScrollView(for: sessionId, paneId: paneId) {
+                return scrollView
+            }
+
+            // Create scroll view wrapper for existing terminal
+            let scrollView = TerminalScrollView(contentSize: size, surfaceView: existingTerminal)
+            sessionManager.setScrollView(scrollView, for: sessionId, paneId: paneId)
+            return scrollView
         }
 
         // Ensure Ghostty app is ready
@@ -131,7 +139,11 @@ struct TerminalViewWrapper: NSViewRepresentable {
         // Start monitoring for process exit
         context.coordinator.startMonitoring(terminal: terminalView)
 
-        return terminalView
+        // Wrap in scroll view
+        let scrollView = TerminalScrollView(contentSize: size, surfaceView: terminalView)
+        sessionManager.setScrollView(scrollView, for: sessionId, paneId: paneId)
+
+        return scrollView
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
@@ -143,16 +155,24 @@ struct TerminalViewWrapper: NSViewRepresentable {
             nsView.layoutSubtreeIfNeeded()
         }
 
-        // Handle focus changes
-        if shouldFocus {
-            guard let window = nsView.window else { return }
-            window.makeFirstResponder(nsView)
-        } else if !isFocused && nsView.window?.firstResponder == nsView {
-            nsView.window?.makeFirstResponder(nil)
+        // Get the terminal view (either directly or from scroll view)
+        let terminalView: GhosttyTerminalView?
+        if let scrollView = nsView as? TerminalScrollView {
+            terminalView = scrollView.surfaceView
+        } else {
+            terminalView = nsView as? GhosttyTerminalView
         }
 
-        // Keep callbacks up to date if settings/state changed
-        if let terminalView = nsView as? GhosttyTerminalView {
+        // Handle focus changes - focus the terminal view, not the scroll view
+        if let terminalView = terminalView {
+            if shouldFocus {
+                guard let window = nsView.window else { return }
+                window.makeFirstResponder(terminalView)
+            } else if !isFocused && nsView.window?.firstResponder == terminalView {
+                nsView.window?.makeFirstResponder(nil)
+            }
+
+            // Keep callbacks up to date if settings/state changed
             terminalView.onProcessExit = onProcessExit
             terminalView.onProgressReport = onProgress
             terminalView.onTitleChange = onTitleChange

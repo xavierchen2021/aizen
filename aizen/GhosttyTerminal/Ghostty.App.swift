@@ -309,6 +309,27 @@ extension Ghostty {
                 }
                 return true
 
+            case GHOSTTY_ACTION_CELL_SIZE:
+                // Cell size update - used for row-to-pixel conversion in scrollbar
+                let cellSize = action.action.cell_size
+                let backingSize = NSSize(width: Double(cellSize.width), height: Double(cellSize.height))
+                DispatchQueue.main.async {
+                    guard let terminalView = terminalView else { return }
+                    // Convert from backing (pixel) coordinates to points
+                    terminalView.cellSize = terminalView.convertFromBacking(backingSize)
+                }
+                return true
+
+            case GHOSTTY_ACTION_SCROLLBAR:
+                // Scrollbar state update - post notification for scroll view
+                let scrollbar = Ghostty.Action.Scrollbar(c: action.action.scrollbar)
+                NotificationCenter.default.post(
+                    name: .ghosttyDidUpdateScrollbar,
+                    object: terminalView,
+                    userInfo: [Notification.Name.ScrollbarKey: scrollbar]
+                )
+                return true
+
             default:
                 // Log unhandled actions
                 Ghostty.logger.debug("Action received: \(action.tag.rawValue) on target: \(target.tag.rawValue)")

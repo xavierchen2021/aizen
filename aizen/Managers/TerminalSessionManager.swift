@@ -11,6 +11,7 @@ class TerminalSessionManager {
     static let shared = TerminalSessionManager()
 
     private var terminals: [String: GhosttyTerminalView] = [:]
+    private var scrollViews: [String: TerminalScrollView] = [:]
 
     private init() {}
 
@@ -27,11 +28,25 @@ class TerminalSessionManager {
     func removeTerminal(for sessionId: UUID, paneId: String) {
         let key = "\(sessionId.uuidString)-\(paneId)"
         terminals.removeValue(forKey: key)
+        scrollViews.removeValue(forKey: key)
     }
 
     func removeAllTerminals(for sessionId: UUID) {
         let prefix = sessionId.uuidString
         terminals = terminals.filter { !$0.key.hasPrefix(prefix) }
+        scrollViews = scrollViews.filter { !$0.key.hasPrefix(prefix) }
+    }
+
+    // MARK: - Scroll View Management
+
+    func getScrollView(for sessionId: UUID, paneId: String) -> TerminalScrollView? {
+        let key = "\(sessionId.uuidString)-\(paneId)"
+        return scrollViews[key]
+    }
+
+    func setScrollView(_ scrollView: TerminalScrollView, for sessionId: UUID, paneId: String) {
+        let key = "\(sessionId.uuidString)-\(paneId)"
+        scrollViews[key] = scrollView
     }
 
     func getTerminalCount(for sessionId: UUID) -> Int {

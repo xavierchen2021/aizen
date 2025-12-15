@@ -42,6 +42,12 @@ class GhosttyTerminalView: NSView {
     var onProgressReport: ((GhosttyProgressState, Int?) -> Void)?
     private var didSignalReady = false
 
+    /// Cell size in points for row-to-pixel conversion (used by scroll view)
+    var cellSize: NSSize = .zero
+
+    /// Current scrollbar state from Ghostty core (used by scroll view)
+    var scrollbar: Ghostty.Action.Scrollbar?
+
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "win.aizen.app", category: "GhosttyTerminal")
 
     // MARK: - Handler Components
