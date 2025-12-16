@@ -99,25 +99,29 @@ struct TerminalTabView: View {
 
             // Presets section
             if !presetManager.presets.isEmpty {
-                VStack(spacing: 12) {
+                VStack(spacing: 16) {
                     Text("Or launch a preset")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        .font(.body)
+                        .foregroundStyle(.secondary)
 
                     HStack(spacing: 12) {
-                        ForEach(presetManager.presets.prefix(4)) { preset in
+                        ForEach(presetManager.presets.prefix(5)) { preset in
                             Button {
                                 createNewSession(withPreset: preset)
                             } label: {
-                                VStack(spacing: 6) {
+                                VStack(spacing: 8) {
                                     Image(systemName: preset.icon)
-                                        .font(.system(size: 20))
+                                        .font(.system(size: 24))
                                     Text(preset.name)
-                                        .font(.caption)
+                                        .font(.system(size: 13, weight: .medium))
                                         .lineLimit(1)
                                 }
-                                .frame(width: 72, height: 56)
-                                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+                                .frame(width: 100, height: 80)
+                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .strokeBorder(.separator.opacity(0.3), lineWidth: 1)
+                                }
                             }
                             .buttonStyle(.plain)
                         }
