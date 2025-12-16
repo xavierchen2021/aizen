@@ -220,7 +220,10 @@ extension Ghostty {
 
                 # Enable shell integration (resources dir auto-detected from app bundle)
                 shell-integration = \(shellName)
-                shell-integration-features = cursor,sudo,title
+                shell-integration-features = no-cursor,sudo,title
+
+                # Cursor
+                cursor-style-blink = true
 
                 theme = \(terminalThemeName)
 

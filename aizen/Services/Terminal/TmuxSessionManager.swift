@@ -29,6 +29,11 @@ actor TmuxSessionManager {
         Task { await ensureConfigExists() }
     }
 
+    /// Update tmux config when theme changes
+    func updateConfig() {
+        ensureConfigExists()
+    }
+
     /// Ensure tmux config exists in ~/.aizen/tmux.conf
     private func ensureConfigExists() {
         let aizenDir = FileManager.default.homeDirectoryForCurrentUser
@@ -38,6 +43,10 @@ actor TmuxSessionManager {
         try? FileManager.default.createDirectory(at: aizenDir, withIntermediateDirectories: true)
 
         let configFile = aizenDir.appendingPathComponent("tmux.conf")
+
+        // Get theme-based mode style for selection highlighting
+        let themeName = UserDefaults.standard.string(forKey: "terminalThemeName") ?? "Catppuccin Mocha"
+        let modeStyle = GhosttyThemeParser.loadTmuxModeStyle(named: themeName)
 
         // Always overwrite to ensure latest config
         let config = """
@@ -53,8 +62,12 @@ actor TmuxSessionManager {
         # Enable mouse support
         set -g mouse on
 
-        # Set default terminal
+        # Set default terminal with true color support
         set -g default-terminal "xterm-256color"
+        set -ag terminal-overrides ",xterm-256color:RGB"
+
+        # Selection highlighting in copy-mode (from theme: \(themeName))
+        set -g mode-style "\(modeStyle)"
 
         # Smart mouse scroll: copy-mode at shell, passthrough in TUI apps
         bind -n WheelUpPane if -F '#{||:#{mouse_any_flag},#{alternate_on}}' 'send-keys -M' 'copy-mode -eH; send-keys -M'

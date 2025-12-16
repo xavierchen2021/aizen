@@ -57,6 +57,7 @@ struct aizenApp: App {
                 .environmentObject(ghosttyApp)
                 .task(id: "\(terminalFontName)\(terminalFontSize)\(terminalThemeName)") {
                     ghosttyApp.reloadConfig()
+                    await TmuxSessionManager.shared.updateConfig()
                 }
                 .task {
                     await cleanupOrphanedTmuxSessions()
