@@ -19,6 +19,7 @@ struct aizenApp: App {
     // Sparkle updater controller
     private let updaterController: SPUStandardUpdaterController
     private let shortcutManager = KeyboardShortcutManager()
+    @State private var aboutWindow: NSWindow?
 
     // Terminal settings observers
     @AppStorage("terminalFontName") private var terminalFontName = "Menlo"
@@ -65,6 +66,12 @@ struct aizenApp: App {
         .windowToolbarStyle(.unified)
         .defaultSize(width: 1200, height: 800)
         .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About Aizen") {
+                    showAboutWindow()
+                }
+            }
+
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesView(updater: updaterController.updater)
             }
@@ -93,12 +100,22 @@ struct aizenApp: App {
             }
 
             CommandGroup(replacing: .help) {
-                Button {
+                Button("Join Discord Community") {
                     if let url = URL(string: "https://discord.gg/eKW7GNesuS") {
                         NSWorkspace.shared.open(url)
                     }
-                } label: {
-                    Label("Join Discord Community", image: "DiscordLogo")
+                }
+
+                Button("View on GitHub") {
+                    if let url = URL(string: "https://github.com/vivy-company/aizen") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+
+                Button("Report an Issue") {
+                    if let url = URL(string: "https://github.com/vivy-company/aizen/issues") {
+                        NSWorkspace.shared.open(url)
+                    }
                 }
             }
         }
@@ -108,6 +125,27 @@ struct aizenApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified)
+    }
+
+    // MARK: - About Window
+
+    private func showAboutWindow() {
+        if let existingWindow = aboutWindow, existingWindow.isVisible {
+            existingWindow.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let aboutView = AboutView()
+        let hostingController = NSHostingController(rootView: aboutView)
+
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "About Aizen"
+        window.styleMask = [.titled, .closable]
+        window.isReleasedWhenClosed = false
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+
+        aboutWindow = window
     }
 
     // MARK: - tmux Session Cleanup
