@@ -397,32 +397,36 @@ class FileBrowserViewModel: ObservableObject {
         guard let worktreePath = worktree.path else { return }
 
         do {
-            // Load git status using libgit2
-            let repo = try Libgit2Repository(path: worktreePath)
-            let status = try repo.status()
+            // Load git status using libgit2 on background thread to avoid blocking UI
+            let newStatus = try await Task.detached {
+                let repo = try Libgit2Repository(path: worktreePath)
+                let status = try repo.status()
 
-            // Convert to file status map
-            var newStatus: [String: FileGitStatus] = [:]
+                // Convert to file status map
+                var statusMap: [String: FileGitStatus] = [:]
 
-            for entry in status.staged {
-                let absolutePath = (worktreePath as NSString).appendingPathComponent(entry.path)
-                newStatus[absolutePath] = .staged
-            }
+                for entry in status.staged {
+                    let absolutePath = (worktreePath as NSString).appendingPathComponent(entry.path)
+                    statusMap[absolutePath] = .staged
+                }
 
-            for entry in status.modified {
-                let absolutePath = (worktreePath as NSString).appendingPathComponent(entry.path)
-                newStatus[absolutePath] = .modified
-            }
+                for entry in status.modified {
+                    let absolutePath = (worktreePath as NSString).appendingPathComponent(entry.path)
+                    statusMap[absolutePath] = .modified
+                }
 
-            for entry in status.untracked {
-                let absolutePath = (worktreePath as NSString).appendingPathComponent(entry.path)
-                newStatus[absolutePath] = .untracked
-            }
+                for entry in status.untracked {
+                    let absolutePath = (worktreePath as NSString).appendingPathComponent(entry.path)
+                    statusMap[absolutePath] = .untracked
+                }
 
-            for entry in status.conflicted {
-                let absolutePath = (worktreePath as NSString).appendingPathComponent(entry.path)
-                newStatus[absolutePath] = .conflicted
-            }
+                for entry in status.conflicted {
+                    let absolutePath = (worktreePath as NSString).appendingPathComponent(entry.path)
+                    statusMap[absolutePath] = .conflicted
+                }
+
+                return statusMap
+            }.value
 
             gitFileStatus = newStatus
 
