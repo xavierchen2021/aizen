@@ -56,6 +56,9 @@ actor TmuxSessionManager {
         # Enable hyperlinks (OSC 8)
         set -as terminal-features ",*:hyperlinks"
 
+        # Allow OSC sequences to pass through (title updates, etc.)
+        set -g allow-passthrough on
+
         # Hide status bar
         set -g status off
 
