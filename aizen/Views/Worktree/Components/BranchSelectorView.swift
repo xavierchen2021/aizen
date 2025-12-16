@@ -22,36 +22,45 @@ struct BranchSelectorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Search field
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+            // Header with search and close
+            HStack(spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
 
-                TextField(allowCreation ? "Search or create new one" : "Search branches", text: $searchText)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12))
-                    .onSubmit {
-                        if allowCreation && !searchText.isEmpty && filteredBranches.isEmpty {
-                            createBranch()
+                    TextField(allowCreation ? "Search or create new one" : "Search branches", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .onSubmit {
+                            if allowCreation && !searchText.isEmpty && filteredBranches.isEmpty {
+                                createBranch()
+                            }
                         }
-                    }
 
-                if !searchText.isEmpty {
-                    Button {
-                        searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
+                    if !searchText.isEmpty {
+                        Button {
+                            searchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
+                .padding(8)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .cornerRadius(8)
+
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 20))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
             }
             .padding(12)
-            .background(Color(nsColor: .textBackgroundColor))
-            .cornerRadius(6)
-            .padding()
 
             Divider()
 
@@ -90,6 +99,17 @@ struct BranchSelectorView: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
+                        // Count label
+                        HStack {
+                            Text("\(filteredBranches.count) branches")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.top, 8)
+                        .padding(.bottom, 4)
+
                         ForEach(Array(filteredBranches.prefix(displayedCount)), id: \.id) { branch in
                             branchRow(branch)
                         }
@@ -102,7 +122,7 @@ struct BranchSelectorView: View {
                                 HStack {
                                     Image(systemName: "plus.circle")
                                         .font(.system(size: 12))
-                                        .foregroundStyle(.blue)
+                                        .foregroundStyle(Color.accentColor)
 
                                     Text("Create branch: \(searchText)")
                                         .font(.system(size: 12))
@@ -110,7 +130,7 @@ struct BranchSelectorView: View {
 
                                     Spacer()
                                 }
-                                .padding(.horizontal, 16)
+                                .padding(.horizontal, 12)
                                 .padding(.vertical, 12)
                             }
                             .buttonStyle(.plain)
@@ -123,31 +143,22 @@ struct BranchSelectorView: View {
                                     displayedCount = min(displayedCount + pageSize, filteredBranches.count)
                                 }
                             } label: {
-                                HStack {
-                                    Image(systemName: "arrow.down.circle")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(.blue)
-
-                                    Text("Load \(min(pageSize, filteredBranches.count - displayedCount)) more...")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(.blue)
-
-                                    Spacer()
-
-                                    Text("\(displayedCount) of \(filteredBranches.count)")
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
+                                Text("Load more (\(filteredBranches.count - displayedCount) remaining)")
+                                    .font(.caption)
+                                    .foregroundStyle(Color.accentColor)
+                                    .padding(.vertical, 12)
                             }
                             .buttonStyle(.plain)
+                            .frame(maxWidth: .infinity)
                         }
                     }
+                    .padding(.bottom, 12)
                 }
+                .background(Color(nsColor: .controlBackgroundColor))
             }
         }
         .frame(width: 350, height: 400)
+        .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             loadBranches()
         }
@@ -163,10 +174,10 @@ struct BranchSelectorView: View {
                 dismiss()
             }
         } label: {
-            HStack {
+            HStack(spacing: 8) {
                 Image(systemName: "arrow.triangle.branch")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 11))
+                    .foregroundStyle(branch.id == selectedBranch?.id ? Color.accentColor : Color.secondary)
 
                 Text(branch.name)
                     .font(.system(size: 12, design: .monospaced))
@@ -176,13 +187,15 @@ struct BranchSelectorView: View {
 
                 if branch.id == selectedBranch?.id {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.blue)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.accentColor)
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(branch.id == selectedBranch?.id ? Color.accentColor.opacity(0.1) : Color.clear)
+            .cornerRadius(6)
+            .padding(.horizontal, 4)
         }
         .buttonStyle(.plain)
     }
