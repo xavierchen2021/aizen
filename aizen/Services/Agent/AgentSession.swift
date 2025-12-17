@@ -5,8 +5,8 @@
 //  Created by Uladzislau Yakauleu on 17.10.25.
 //
 
-import Foundation
 import Combine
+import Foundation
 import UniformTypeIdentifiers
 import os.log
 
@@ -14,7 +14,7 @@ import os.log
 enum SessionState: Equatable {
     case idle
     case initializing  // Process launching, protocol init, waiting for session
-    case ready         // Fully initialized, can send messages
+    case ready  // Fully initialized, can send messages
     case closing
     case failed(String)
 
@@ -150,8 +150,11 @@ class AgentSession: ObservableObject, ACPClientDelegate {
         // Launch the agent process with correct working directory
         do {
             logger.info("[\(agentName)] Launching process...")
-            try await client.launch(agentPath: agentPath, arguments: launchArgs, workingDirectory: workingDir)
-            logger.info("[\(agentName)] Process launched in \(String(format: "%.0f", (CFAbsoluteTimeGetCurrent() - startTime) * 1000))ms")
+            try await client.launch(
+                agentPath: agentPath, arguments: launchArgs, workingDirectory: workingDir)
+            logger.info(
+                "[\(agentName)] Process launched in \(String(format: "%.0f", (CFAbsoluteTimeGetCurrent() - startTime) * 1000))ms"
+            )
         } catch {
             // Rollback on launch failure
             isActive = false
@@ -181,7 +184,9 @@ class AgentSession: ObservableObject, ACPClientDelegate {
                     terminal: true
                 )
             )
-            logger.info("[\(agentName)] Initialize completed in \(String(format: "%.0f", (CFAbsoluteTimeGetCurrent() - startTime) * 1000))ms")
+            logger.info(
+                "[\(agentName)] Initialize completed in \(String(format: "%.0f", (CFAbsoluteTimeGetCurrent() - startTime) * 1000))ms"
+            )
         } catch {
             isActive = false
             sessionState = .failed("Initialize failed: \(error.localizedDescription)")
@@ -198,7 +203,9 @@ class AgentSession: ObservableObject, ACPClientDelegate {
                 self.versionInfo = versionInfo
                 if versionInfo.isOutdated {
                     self.needsUpdate = true
-                    self.addSystemMessage("⚠️ Update available: \(agentName) v\(versionInfo.current ?? "?") → v\(versionInfo.latest ?? "?")")
+                    self.addSystemMessage(
+                        "⚠️ Update available: \(agentName) v\(versionInfo.current ?? "?") → v\(versionInfo.latest ?? "?")"
+                    )
                 }
             }
         }
@@ -212,24 +219,31 @@ class AgentSession: ObservableObject, ACPClientDelegate {
             if shouldSkipAuth {
                 // User has previously authenticated externally (e.g., claude /login)
                 // Try session directly with normal timeout
-                logger.info("[\(agentName)] Skipping auth (previously succeeded without explicit auth)...")
+                logger.info(
+                    "[\(agentName)] Skipping auth (previously succeeded without explicit auth)...")
                 do {
                     try await createSessionDirectly(workingDir: workingDir, client: client)
                     return
                 } catch {
                     // Auth may have expired, clear skip preference and show dialog
-                    logger.info("[\(agentName)] Session failed despite skip preference: \(error.localizedDescription)")
+                    logger.info(
+                        "[\(agentName)] Session failed despite skip preference: \(error.localizedDescription)"
+                    )
                     AgentRegistry.shared.clearAuthPreference(for: agentName)
                     // Fall through to show auth dialog
                 }
             } else if let savedAuthMethod = AgentRegistry.shared.getAuthPreference(for: agentName) {
                 // Try saved auth method
                 do {
-                    try await performAuthentication(client: client, authMethodId: savedAuthMethod, workingDir: workingDir)
+                    try await performAuthentication(
+                        client: client, authMethodId: savedAuthMethod, workingDir: workingDir)
                     return
                 } catch {
-                    logger.error("Saved auth method '\(savedAuthMethod)' failed: \(error.localizedDescription)")
-                    addSystemMessage("⚠️ Saved authentication method failed. Please re-authenticate.")
+                    logger.error(
+                        "Saved auth method '\(savedAuthMethod)' failed: \(error.localizedDescription)"
+                    )
+                    addSystemMessage(
+                        "⚠️ Saved authentication method failed. Please re-authenticate.")
                     AgentRegistry.shared.clearAuthPreference(for: agentName)
                     // Fall through to show auth dialog
                 }
@@ -242,7 +256,8 @@ class AgentSession: ObservableObject, ACPClientDelegate {
                     AgentRegistry.shared.saveSkipAuth(for: agentName)
                     return
                 } catch {
-                    logger.info("[\(agentName)] Session without auth failed: \(error.localizedDescription)")
+                    logger.info(
+                        "[\(agentName)] Session without auth failed: \(error.localizedDescription)")
                     // Fall through to show auth dialog
                 }
             }
@@ -261,7 +276,9 @@ class AgentSession: ObservableObject, ACPClientDelegate {
                 workingDirectory: workingDir,
                 mcpServers: []
             )
-            logger.info("[\(agentName)] Session created in \(String(format: "%.0f", (CFAbsoluteTimeGetCurrent() - startTime) * 1000))ms, sessionId: \(sessionResponse.sessionId.value)")
+            logger.info(
+                "[\(agentName)] Session created in \(String(format: "%.0f", (CFAbsoluteTimeGetCurrent() - startTime) * 1000))ms, sessionId: \(sessionResponse.sessionId.value)"
+            )
         } catch {
             isActive = false
             sessionState = .failed("newSession failed: \(error.localizedDescription)")
@@ -362,15 +379,24 @@ class AgentSession: ObservableObject, ACPClientDelegate {
 
     // MARK: - ACPClientDelegate Methods
 
-    func handleFileReadRequest(_ path: String, sessionId: String, line: Int?, limit: Int?) async throws -> ReadTextFileResponse {
-        return try await fileSystemDelegate.handleFileReadRequest(path, sessionId: sessionId, line: line, limit: limit)
+    func handleFileReadRequest(_ path: String, sessionId: String, line: Int?, limit: Int?)
+        async throws -> ReadTextFileResponse
+    {
+        return try await fileSystemDelegate.handleFileReadRequest(
+            path, sessionId: sessionId, line: line, limit: limit)
     }
 
-    func handleFileWriteRequest(_ path: String, content: String, sessionId: String) async throws -> WriteTextFileResponse {
-        return try await fileSystemDelegate.handleFileWriteRequest(path, content: content, sessionId: sessionId)
+    func handleFileWriteRequest(_ path: String, content: String, sessionId: String) async throws
+        -> WriteTextFileResponse
+    {
+        return try await fileSystemDelegate.handleFileWriteRequest(
+            path, content: content, sessionId: sessionId)
     }
 
-    func handleTerminalCreate(command: String, sessionId: String, args: [String]?, cwd: String?, env: [EnvVariable]?, outputByteLimit: Int?) async throws -> CreateTerminalResponse {
+    func handleTerminalCreate(
+        command: String, sessionId: String, args: [String]?, cwd: String?, env: [EnvVariable]?,
+        outputByteLimit: Int?
+    ) async throws -> CreateTerminalResponse {
         // Fall back to session's working directory if cwd not specified
         let effectiveCwd = cwd ?? (workingDirectory.isEmpty ? nil : workingDirectory)
 
@@ -384,23 +410,37 @@ class AgentSession: ObservableObject, ACPClientDelegate {
         )
     }
 
-    func handleTerminalOutput(terminalId: TerminalId, sessionId: String) async throws -> TerminalOutputResponse {
-        return try await terminalDelegate.handleTerminalOutput(terminalId: terminalId, sessionId: sessionId)
+    func handleTerminalOutput(terminalId: TerminalId, sessionId: String) async throws
+        -> TerminalOutputResponse
+    {
+        return try await terminalDelegate.handleTerminalOutput(
+            terminalId: terminalId, sessionId: sessionId)
     }
 
-    func handleTerminalWaitForExit(terminalId: TerminalId, sessionId: String) async throws -> WaitForExitResponse {
-        return try await terminalDelegate.handleTerminalWaitForExit(terminalId: terminalId, sessionId: sessionId)
+    func handleTerminalWaitForExit(terminalId: TerminalId, sessionId: String) async throws
+        -> WaitForExitResponse
+    {
+        return try await terminalDelegate.handleTerminalWaitForExit(
+            terminalId: terminalId, sessionId: sessionId)
     }
 
-    func handleTerminalKill(terminalId: TerminalId, sessionId: String) async throws -> KillTerminalResponse {
-        return try await terminalDelegate.handleTerminalKill(terminalId: terminalId, sessionId: sessionId)
+    func handleTerminalKill(terminalId: TerminalId, sessionId: String) async throws
+        -> KillTerminalResponse
+    {
+        return try await terminalDelegate.handleTerminalKill(
+            terminalId: terminalId, sessionId: sessionId)
     }
 
-    func handleTerminalRelease(terminalId: TerminalId, sessionId: String) async throws -> ReleaseTerminalResponse {
-        return try await terminalDelegate.handleTerminalRelease(terminalId: terminalId, sessionId: sessionId)
+    func handleTerminalRelease(terminalId: TerminalId, sessionId: String) async throws
+        -> ReleaseTerminalResponse
+    {
+        return try await terminalDelegate.handleTerminalRelease(
+            terminalId: terminalId, sessionId: sessionId)
     }
 
-    func handlePermissionRequest(request: RequestPermissionRequest) async throws -> RequestPermissionResponse {
+    func handlePermissionRequest(request: RequestPermissionRequest) async throws
+        -> RequestPermissionResponse
+    {
         return await permissionHandler.handlePermissionRequest(request: request)
     }
 
@@ -460,15 +500,13 @@ struct MessageItem: Identifiable, Equatable {
     let timestamp: Date
     var toolCalls: [ToolCall] = []
     var contentBlocks: [ContentBlock] = []
-    var isComplete: Bool = true
+    var isComplete: Bool = false
     var startTime: Date?
     var executionTime: TimeInterval?
     var requestId: String?
 
     static func == (lhs: MessageItem, rhs: MessageItem) -> Bool {
-        lhs.id == rhs.id &&
-        lhs.content == rhs.content &&
-        lhs.isComplete == rhs.isComplete
+        lhs.id == rhs.id && lhs.content == rhs.content && lhs.isComplete == rhs.isComplete
     }
 }
 
@@ -493,7 +531,8 @@ enum AgentSessionError: LocalizedError {
         case .sessionNotActive:
             return "No active session"
         case .agentNotFound(let name):
-            return "Agent '\(name)' not configured. Please set the executable path in Settings → AI Agents, or click 'Auto Discover' to find it automatically."
+            return
+                "Agent '\(name)' not configured. Please set the executable path in Settings → AI Agents, or click 'Auto Discover' to find it automatically."
         case .agentNotExecutable(let path):
             return "Agent at '\(path)' is not executable"
         case .clientNotInitialized:

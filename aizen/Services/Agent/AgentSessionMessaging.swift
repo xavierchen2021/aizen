@@ -68,17 +68,23 @@ extension AgentSession {
         isStreaming = true
 
         // Send to agent - notifications arrive asynchronously via AsyncStream
+        // Response comes AFTER all notifications are sent, but our notification
+        // listener Task may not have processed them all yet
         let response = try await client.sendPrompt(sessionId: sessionId, content: contentBlocks)
 
-        // Yield to let AsyncStream notification consumer process any buffered messages
-        // This prevents race where isStreaming=false fires before last chunks are processed
-        await Task.yield()
+        logger.debug("Prompt response received with stop reason: \(response.stopReason.rawValue)")
 
-        // Now mark streaming complete and finalize message
-        isStreaming = false
-        markLastMessageComplete()
+        // Delay setting isStreaming = false to allow buffered notifications to be processed
+        // The AsyncStream may still have notifications queued that need to update messages
+        // Setting @Published properties during view updates causes undefined behavior
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(100))
+            self.isStreaming = false
+            logger.debug("Streaming ended after notification drain")
+        }
 
-        logger.debug("Prompt completed with stop reason: \(response.stopReason.rawValue)")
+        // Don't mark message complete here - notifications may still be processing
+        // Message gets marked complete when next user message is sent (line 38)
     }
 
     /// Cancel the current prompt turn
@@ -118,22 +124,23 @@ extension AgentSession {
             throw AgentSessionError.custom("Cannot access file: \(url.lastPathComponent)")
         }
         defer { url.stopAccessingSecurityScopedResource() }
-        
+
         // Check file size (limit to 10MB)
-        let maxFileSize = 10 * 1024 * 1024 // 10MB
+        let maxFileSize = 10 * 1024 * 1024  // 10MB
         let fileAttributes = try FileManager.default.attributesOfItem(atPath: url.path)
         if let fileSize = fileAttributes[.size] as? Int64, fileSize > maxFileSize {
-            throw AgentSessionError.custom("File too large: \(url.lastPathComponent) (\(fileSize / 1024 / 1024)MB). Maximum size is 10MB.")
+            throw AgentSessionError.custom(
+                "File too large: \(url.lastPathComponent) (\(fileSize / 1024 / 1024)MB). Maximum size is 10MB."
+            )
         }
 
         // Get MIME type
         let mimeType = getMimeType(for: url)
 
         // Determine if file is text or binary based on MIME type
-        let isTextFile = mimeType?.hasPrefix("text/") ?? false ||
-                        mimeType == "application/json" ||
-                        mimeType == "application/xml" ||
-                        mimeType == "application/javascript"
+        let isTextFile =
+            mimeType?.hasPrefix("text/") ?? false || mimeType == "application/json"
+            || mimeType == "application/xml" || mimeType == "application/javascript"
 
         if isTextFile {
             // Read as text asynchronously
@@ -168,7 +175,7 @@ extension AgentSession {
             return .resource(resourceContent)
         }
     }
-    
+
     /// Asynchronously read text file
     private func readTextFileAsync(url: URL) async throws -> String {
         return try await withCheckedThrowingContinuation { continuation in
@@ -182,7 +189,7 @@ extension AgentSession {
             }
         }
     }
-    
+
     /// Asynchronously read binary file
     private func readDataFileAsync(url: URL) async throws -> Data {
         return try await withCheckedThrowingContinuation { continuation in
@@ -208,13 +215,14 @@ extension AgentSession {
     // MARK: - Message Management
 
     func addUserMessage(_ content: String, contentBlocks: [ContentBlock] = []) {
-        messages.append(MessageItem(
-            id: UUID().uuidString,
-            role: .user,
-            content: content,
-            timestamp: Date(),
-            contentBlocks: contentBlocks
-        ))
+        messages.append(
+            MessageItem(
+                id: UUID().uuidString,
+                role: .user,
+                content: content,
+                timestamp: Date(),
+                contentBlocks: contentBlocks
+            ))
     }
 
     func markLastMessageComplete() {
@@ -260,11 +268,12 @@ extension AgentSession {
     }
 
     func addSystemMessage(_ content: String) {
-        messages.append(MessageItem(
-            id: UUID().uuidString,
-            role: .system,
-            content: content,
-            timestamp: Date()
-        ))
+        messages.append(
+            MessageItem(
+                id: UUID().uuidString,
+                role: .system,
+                content: content,
+                timestamp: Date()
+            ))
     }
 }

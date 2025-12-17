@@ -383,12 +383,11 @@ class ChatSessionViewModel: ObservableObject {
         cancellables.removeAll()
 
         session.$messages
-            .receive(on: DispatchQueue.main)
             .sink { [weak self] newMessages in
                 guard let self = self else { return }
+                // AgentSession is @MainActor so we're already on main thread
+                // Direct call avoids coalescing of rapid streaming updates
                 self.syncMessages(newMessages)
-
-                // isProcessing is driven by isStreaming observer - no need to update here
 
                 // Only auto-scroll if user is near bottom
                 if self.isNearBottom, let lastMessage = newMessages.last {

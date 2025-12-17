@@ -7,6 +7,7 @@
 
 import Foundation
 import os.log
+import Combine
 
 // MARK: - AgentSession + Notifications
 
@@ -93,18 +94,17 @@ extension AgentSession {
                 let (text, blockContent) = textAndContent(from: block)
                 guard !text.isEmpty else { break }
 
-                // Debug: log why we're creating vs appending
-                if let lastMessage = messages.last {
-                    logger.debug("agentMessageChunk: lastMessage.role=\(lastMessage.role.rawValue), isComplete=\(lastMessage.isComplete), text=\(text.prefix(20))")
-                } else {
-                    logger.debug("agentMessageChunk: no last message, creating new. text=\(text.prefix(20))")
-                }
+                let lastMessage = messages.last
+                logger.debug("agentMessageChunk: text='\(text)' lastRole=\(lastMessage?.role == .agent ? "agent" : "other") isComplete=\(lastMessage?.isComplete ?? true) isStreaming=\(self.isStreaming)")
 
-                if let lastMessage = messages.last,
+                if let lastMessage = lastMessage,
                    lastMessage.role == .agent,
                    !lastMessage.isComplete {
-                    // Create new struct with appended content
+                    // Append to existing message
                     let newContent = lastMessage.content + text
+                    logger.debug("agentMessageChunk: APPENDING to existing, newContent='\(newContent)'")
+                    // Force SwiftUI to recognize the change by explicitly notifying
+                    objectWillChange.send()
                     messages[messages.count - 1] = MessageItem(
                         id: lastMessage.id,
                         role: .agent,

@@ -25,10 +25,10 @@ extension ChatSessionViewModel {
         }
     }
 
-    /// Rebuild the timeline index from current items
+    /// Rebuild the timeline index from current items (uses stableId for consistent lookups)
     private func rebuildTimelineIndex() {
         timelineIndex = Dictionary(uniqueKeysWithValues:
-            timelineItems.enumerated().map { ($1.id, $0) })
+            timelineItems.enumerated().map { ($1.stableId, $0) })
     }
 
     // MARK: - Timeline
