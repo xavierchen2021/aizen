@@ -235,7 +235,7 @@ struct AgentListItemView: View {
                             if let result = testResult {
                                 Text(result)
                                     .font(.caption)
-                                    .foregroundColor(result.contains("Success") ? .green : .red)
+                                    .foregroundColor(result.contains("Success") || result.contains("Updated") ? .green : .red)
                             }
                         }
 

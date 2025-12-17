@@ -20,7 +20,7 @@ enum ANSIColor {
     var color: Color {
         switch self {
         case .default: return .primary
-        case .black: return Color(nsColor: .black)
+        case .black: return Color(white: 0.3)
         case .red: return Color(red: 0.8, green: 0.2, blue: 0.2)
         case .green: return Color(red: 0.2, green: 0.8, blue: 0.2)
         case .yellow: return Color(red: 0.8, green: 0.8, blue: 0.2)
