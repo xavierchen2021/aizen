@@ -60,12 +60,12 @@ private struct AutocompleteListView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         AutocompleteRow(
                             item: item,
                             isSelected: index == selectedIndex
                         )
-                        .id(index)
+                        .id(item.id)
                         .onTapGesture {
                             onTap(index)
                         }
@@ -76,7 +76,7 @@ private struct AutocompleteListView: View {
             .scrollDisabled(items.count <= 5)
             .onChange(of: selectedIndex) { newIndex in
                 if newIndex >= 0 && newIndex < items.count {
-                    proxy.scrollTo(newIndex, anchor: nil)
+                    proxy.scrollTo(items[newIndex].id, anchor: nil)
                 }
             }
         }
