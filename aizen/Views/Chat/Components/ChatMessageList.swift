@@ -33,6 +33,7 @@ private struct ScrollViewHeightKey: PreferenceKey {
 struct ChatMessageList: View {
     let timelineItems: [TimelineItem]
     let isProcessing: Bool
+    let isSessionInitializing: Bool
     let selectedAgent: String
     let currentThought: String?
     let currentIterationId: String?
@@ -45,7 +46,58 @@ struct ChatMessageList: View {
     var onScrollPositionChange: (Bool) -> Void = { _ in }
     var childToolCallsProvider: (String) -> [ToolCall] = { _ in [] }
 
+    // Minimum display time for loading view to prevent flashing
+    @State private var showLoadingView = false
+    @State private var loadingStartTime: Date?
+    private let minimumLoadingDuration: TimeInterval = 0.6
+
+    private var shouldShowLoading: Bool {
+        isSessionInitializing && timelineItems.isEmpty
+    }
+
     var body: some View {
+        ZStack {
+            if showLoadingView {
+                AgentLoadingView(agentName: selectedAgent)
+                    .transition(.opacity)
+            } else {
+                messageListContent
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: showLoadingView)
+        .onChange(of: shouldShowLoading) { newValue in
+            if newValue {
+                // Start showing loading
+                showLoadingView = true
+                loadingStartTime = Date()
+            } else {
+                // Ensure minimum display time before hiding
+                guard let startTime = loadingStartTime else {
+                    showLoadingView = false
+                    return
+                }
+                let elapsed = Date().timeIntervalSince(startTime)
+                let remaining = minimumLoadingDuration - elapsed
+                if remaining > 0 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + remaining) {
+                        showLoadingView = false
+                    }
+                } else {
+                    showLoadingView = false
+                }
+            }
+        }
+        .onAppear {
+            // Initialize loading state on appear
+            if shouldShowLoading {
+                showLoadingView = true
+                loadingStartTime = Date()
+            }
+        }
+    }
+
+    private var messageListContent: some View {
         ScrollViewReader { proxy in
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 10) {
