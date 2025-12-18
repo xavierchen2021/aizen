@@ -333,9 +333,14 @@ struct GitPanelWindowContentWithToolbar: View {
 
     // MARK: - PR Actions
 
+    private var isOnMainBranch: Bool {
+        let branch = gitStatus.currentBranch.lowercased()
+        return branch == "main" || branch == "master"
+    }
+
     @ViewBuilder
     private var prActionButton: some View {
-        if let info = hostingInfo, info.provider != .unknown {
+        if let info = hostingInfo, info.provider != .unknown, !isOnMainBranch {
             if prOperationInProgress {
                 HStack(spacing: 6) {
                     ProgressView()
