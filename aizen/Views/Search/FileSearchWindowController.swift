@@ -103,12 +103,6 @@ class FileSearchPanel: NSPanel {
         self.titleVisibility = .hidden
         self.titlebarAppearsTransparent = true
 
-        // Remove any panel backdrop
-        if #available(macOS 12.0, *) {
-            // In newer macOS, explicitly disable content background
-        }
-        self.appearance = NSAppearance(named: .darkAqua)
-
         // Critical for NSPanel - proper keyboard focus handling
         self.becomesKeyOnlyIfNeeded = true
         self.isFloatingPanel = true

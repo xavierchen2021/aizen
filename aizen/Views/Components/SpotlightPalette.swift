@@ -83,7 +83,6 @@ struct SpotlightSearchField<Trailing: View>: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 22, weight: .medium))
                 .focused($isFocused)
-                .textInputAutocapitalization(.never)
                 .disableAutocorrection(true)
                 .onSubmit {
                     onSubmit?()
@@ -105,4 +104,3 @@ struct SpotlightSearchField<Trailing: View>: View {
         }
     }
 }
-

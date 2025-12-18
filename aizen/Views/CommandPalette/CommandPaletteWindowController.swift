@@ -102,7 +102,6 @@ class CommandPalettePanel: NSPanel {
         self.titlebarAppearsTransparent = true
         self.becomesKeyOnlyIfNeeded = true
         self.isFloatingPanel = true
-        self.appearance = NSAppearance(named: .darkAqua)
 
         let hostingView = NSHostingView(
             rootView: CommandPaletteContent(
