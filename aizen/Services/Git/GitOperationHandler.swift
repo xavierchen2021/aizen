@@ -163,12 +163,6 @@ class GitOperationHandler {
                 logger.error("Failed to fetch changes: \(error)")
             }
         )
-
-        if let repository = repository {
-            Task.detached { [repositoryManager] in
-                try? await repositoryManager.refreshRepository(repository)
-            }
-        }
     }
 
     func pull(repository: Repository?) {
@@ -178,12 +172,6 @@ class GitOperationHandler {
                 logger.error("Failed to pull changes: \(error)")
             }
         )
-
-        if let repository = repository {
-            Task.detached { [repositoryManager] in
-                try? await repositoryManager.refreshRepository(repository)
-            }
-        }
     }
 
     func push(repository: Repository?) {
@@ -196,13 +184,6 @@ class GitOperationHandler {
                     self.logger.info("Push completed successfully")
                 } else {
                     self.logger.warning("Push skipped - remote has commits ahead, pull required")
-                }
-
-                // Refresh repository in background
-                if let repository = repository {
-                    Task.detached { [repositoryManager] in
-                        try? await repositoryManager.refreshRepository(repository)
-                    }
                 }
             },
             onError: { [self] error in

@@ -291,11 +291,14 @@ class GitRepositoryService: ObservableObject {
                         await MainActor.run { onSuccess?(false) }
                         return
                     }
-                    // Reload status to get accurate ahead/behind counts
-                    await self.reloadStatusInternal()
-
-                    // Check if we're behind - read on MainActor
-                    let behindCount = await MainActor.run { self.currentStatus.behindCount }
+                    // Check behind/ahead without doing a full status reload (diffStats/status can be heavy on large repos)
+                    let behindCount: Int
+                    do {
+                        let branchStatus = try await self.statusService.getBranchStatus(at: worktreePath)
+                        behindCount = branchStatus.behind
+                    } catch {
+                        behindCount = 0
+                    }
 
                     if behindCount > 0 {
                         self.logger.warning("fetchThenPush: Remote has \(behindCount) commits ahead, blocking push")
