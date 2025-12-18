@@ -11,24 +11,27 @@ actor GitLogService {
 
     /// Get commit history for a repository with pagination
     func getCommitHistory(at repoPath: String, limit: Int = 30, skip: Int = 0) async throws -> [GitCommit] {
-        let repo = try Libgit2Repository(path: repoPath)
-        let commits = try repo.log(limit: limit, skip: skip)
+        // Run on background thread to avoid blocking
+        return try await Task.detached {
+            let repo = try Libgit2Repository(path: repoPath)
+            let commits = try repo.log(limit: limit, skip: skip)
 
-        return commits.map { commit in
-            // Get stats for this commit
-            let stats = try? repo.commitStats(commit.oid)
+            return commits.map { commit in
+                // Get stats for this commit
+                let stats = try? repo.commitStats(commit.oid)
 
-            return GitCommit(
-                id: commit.oid,
-                shortHash: commit.shortOid,
-                message: commit.summary,
-                author: commit.author.name,
-                date: commit.time,
-                filesChanged: stats?.filesChanged ?? 0,
-                additions: stats?.insertions ?? 0,
-                deletions: stats?.deletions ?? 0
-            )
-        }
+                return GitCommit(
+                    id: commit.oid,
+                    shortHash: commit.shortOid,
+                    message: commit.summary,
+                    author: commit.author.name,
+                    date: commit.time,
+                    filesChanged: stats?.filesChanged ?? 0,
+                    additions: stats?.insertions ?? 0,
+                    deletions: stats?.deletions ?? 0
+                )
+            }
+        }.value
     }
 
     /// Get diff output for a specific commit

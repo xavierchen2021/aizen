@@ -39,6 +39,7 @@ struct GitPanelWindowContent: View {
     @State private var showAgentPicker: Bool = false
     @State private var cachedChangedFiles: [String] = []
     @State private var gitIndexWatcher: GitIndexWatcher?
+    @State private var diffReloadTask: Task<Void, Never>?
 
     @StateObject private var reviewManager = ReviewSessionManager()
 
@@ -97,7 +98,7 @@ struct GitPanelWindowContent: View {
         }
         .onChange(of: gitStatus) { _ in
             updateChangedFilesCache()
-            reloadDiff()
+            reloadDiffDebounced()
         }
         .onChange(of: selectedHistoryCommit) { commit in
             Task {
@@ -478,6 +479,22 @@ struct GitPanelWindowContent: View {
 
     private func reloadDiff() {
         Task {
+            await loadDiff(for: selectedHistoryCommit)
+        }
+    }
+
+    private func reloadDiffDebounced() {
+        // Cancel any pending reload
+        diffReloadTask?.cancel()
+
+        // Debounce by 300ms to avoid rapid reloads
+        diffReloadTask = Task {
+            do {
+                try await Task.sleep(for: .milliseconds(300))
+            } catch {
+                return  // Cancelled
+            }
+            guard !Task.isCancelled else { return }
             await loadDiff(for: selectedHistoryCommit)
         }
     }

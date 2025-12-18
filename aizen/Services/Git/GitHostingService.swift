@@ -168,34 +168,40 @@ actor GitHostingService {
     }
 
     func getHostingInfo(for repoPath: String) async -> GitHostingInfo? {
+        // Run libgit2 operations on background thread
+        let remoteURL: String?
         do {
-            let repo = try Libgit2Repository(path: repoPath)
-            guard let remote = try repo.defaultRemote(),
-                  let remoteURL = remote.url else {
-                return nil
-            }
-
-            let provider = detectProvider(from: remoteURL)
-            guard let (owner, repo) = parseOwnerRepo(from: remoteURL) else {
-                return nil
-            }
-
-            let baseURL = extractBaseURL(from: remoteURL, provider: provider)
-            let (cliInstalled, _) = await checkCLIInstalled(for: provider)
-            let cliAuthenticated = cliInstalled ? await checkCLIAuthenticated(for: provider, repoPath: repoPath) : false
-
-            return GitHostingInfo(
-                provider: provider,
-                owner: owner,
-                repo: repo,
-                baseURL: baseURL,
-                cliInstalled: cliInstalled,
-                cliAuthenticated: cliAuthenticated
-            )
+            remoteURL = try await Task.detached {
+                let repo = try Libgit2Repository(path: repoPath)
+                guard let remote = try repo.defaultRemote() else {
+                    return nil
+                }
+                return remote.url
+            }.value
         } catch {
             logger.error("Failed to get hosting info: \(error.localizedDescription)")
             return nil
         }
+
+        guard let remoteURL = remoteURL else { return nil }
+
+        let provider = detectProvider(from: remoteURL)
+        guard let (owner, repo) = parseOwnerRepo(from: remoteURL) else {
+            return nil
+        }
+
+        let baseURL = extractBaseURL(from: remoteURL, provider: provider)
+        let (cliInstalled, _) = await checkCLIInstalled(for: provider)
+        let cliAuthenticated = cliInstalled ? await checkCLIAuthenticated(for: provider, repoPath: repoPath) : false
+
+        return GitHostingInfo(
+            provider: provider,
+            owner: owner,
+            repo: repo,
+            baseURL: baseURL,
+            cliInstalled: cliInstalled,
+            cliAuthenticated: cliAuthenticated
+        )
     }
 
     private func extractBaseURL(from remoteURL: String, provider: GitHostingProvider) -> String {
