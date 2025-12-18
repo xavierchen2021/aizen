@@ -2,15 +2,6 @@
   "originHash" : "0b1e7540e9c066d4975773f3309efdb3ab97930486880278f9befe8f0e7a75ab",
   "pins" : [
     {
-      "identity" : "codeeditlanguages",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/CodeEditApp/CodeEditLanguages.git",
-      "state" : {
-        "branch" : "main",
-        "revision" : "32a1ddcb44d0bcf9bdb41ae426fa1bb7198e62fe"
-      }
-    },
-    {
       "identity" : "rearrange",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/ChimeHQ/Rearrange",
@@ -52,16 +43,7 @@
       "location" : "https://github.com/apple/swift-markdown",
       "state" : {
         "branch" : "main",
-        "revision" : "f7a559ec0d1f4a6a31b82187b5cdf97c632f68f6"
-      }
-    },
-    {
-      "identity" : "swiftlintplugin",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/lukepistrol/SwiftLintPlugin",
-      "state" : {
-        "revision" : "9bbc46a4cf8275ceb39334f6276b6b215d67d5d5",
-        "version" : "0.62.2"
+        "revision" : "b2135f426fca19029430fbf26564e953b2d0f3d3"
       }
     },
     {

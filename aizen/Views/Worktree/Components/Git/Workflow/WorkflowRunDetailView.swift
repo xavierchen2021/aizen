@@ -1,0 +1,495 @@
+//
+//  WorkflowRunDetailView.swift
+//  aizen
+//
+//  Displays workflow run details including jobs, steps, and logs
+//
+
+import SwiftUI
+
+struct WorkflowRunDetailView: View {
+    @ObservedObject var service: WorkflowService
+
+    @State private var selectedJobId: String?
+    @State private var showLogs: Bool = true
+
+    @AppStorage("editorFontFamily") private var editorFontFamily: String = "Menlo"
+
+    private var run: WorkflowRun? { service.selectedRun }
+    private var jobs: [WorkflowJob] { service.selectedRunJobs }
+
+    var body: some View {
+        if let run = run {
+            VStack(spacing: 0) {
+                // Run header
+                runHeader(run)
+
+                Divider()
+
+                // Jobs and logs
+                HSplitView {
+                    // Jobs panel
+                    jobsPanel
+                        .frame(minWidth: 200, idealWidth: 250, maxWidth: 350)
+
+                    // Logs panel
+                    logsPanel
+                }
+            }
+        } else {
+            Text("No run selected")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    // MARK: - Header
+
+    private func runHeader(_ run: WorkflowRun) -> some View {
+        HStack(spacing: 12) {
+            // Status
+            statusBadge(run)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(run.workflowName)
+                        .font(.system(size: 13, weight: .semibold))
+
+                    Text("#\(run.runNumber)")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack(spacing: 8) {
+                    Label(run.branch, systemImage: "arrow.triangle.branch")
+                    Label(run.commit, systemImage: "number")
+                    Label(run.event, systemImage: "bolt")
+                }
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            // Actions
+            if run.isInProgress {
+                Button {
+                    Task {
+                        _ = await service.cancelRun(run)
+                    }
+                } label: {
+                    Label("Cancel", systemImage: "stop.fill")
+                }
+                .buttonStyle(.bordered)
+                .tint(.red)
+                .controlSize(.small)
+            }
+
+            if let url = run.url, let urlObj = URL(string: url) {
+                Link(destination: urlObj) {
+                    Image(systemName: "arrow.up.right.square")
+                }
+                .buttonStyle(.borderless)
+                .help("Open in browser")
+            }
+        }
+        .frame(height: 44)
+        .padding(.horizontal, 12)
+    }
+
+    private func statusBadge(_ run: WorkflowRun) -> some View {
+        HStack(spacing: 4) {
+            if run.isInProgress {
+                ProgressView()
+                    .controlSize(.mini)
+            } else {
+                Image(systemName: run.statusIcon)
+            }
+
+            Text(run.displayStatus)
+                .font(.system(size: 11, weight: .semibold))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .foregroundStyle(.white)
+        .background(statusBackgroundColor(run))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func statusBackgroundColor(_ run: WorkflowRun) -> Color {
+        switch run.statusColor {
+        case "green": return Color(red: 0.25, green: 0.6, blue: 0.35)
+        case "red": return Color(red: 0.7, green: 0.25, blue: 0.25)
+        case "yellow": return Color(red: 0.7, green: 0.6, blue: 0.2)
+        case "orange": return Color(red: 0.75, green: 0.45, blue: 0.2)
+        default: return Color(nsColor: .controlBackgroundColor)
+        }
+    }
+
+    // MARK: - Jobs Panel
+
+    private var jobsPanel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Jobs")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+            }
+            .frame(height: 32)
+            .padding(.horizontal, 12)
+
+            Divider()
+
+            if jobs.isEmpty {
+                VStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Loading jobs...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(jobs) { job in
+                            JobRow(
+                                job: job,
+                                isSelected: selectedJobId == job.id,
+                                onSelect: {
+                                    selectedJobId = job.id
+                                    Task {
+                                        await service.loadLogs(runId: run?.id ?? "", jobId: job.id)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    // MARK: - Logs Panel
+
+    private var logsPanel: some View {
+        VStack(spacing: 0) {
+            // Logs header
+            HStack {
+                Text("Logs")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+
+                if let job = jobs.first(where: { $0.id == selectedJobId }) {
+                    Text("- \(job.name)")
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
+                }
+
+                Spacer()
+
+                if run?.isInProgress == true {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(.green)
+                            .frame(width: 6, height: 6)
+                        Text("Live")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if !service.runLogs.isEmpty {
+                    CopyButton(text: service.runLogs, iconSize: 12)
+                        .help("Copy all logs")
+                }
+
+                if service.isLoadingLogs {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Button {
+                        Task {
+                            await service.refreshLogs()
+                        }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Refresh logs")
+                }
+            }
+            .frame(height: 32)
+            .padding(.horizontal, 12)
+
+            Divider()
+
+            // Logs content
+            if service.isLoadingLogs && service.runLogs.isEmpty {
+                VStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Loading logs...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            } else if service.runLogs.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "doc.text")
+                        .font(.system(size: 30))
+                        .foregroundStyle(.tertiary)
+                    Text("Select a job to view logs")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            } else {
+                WorkflowLogView(service.runLogs, fontSize: 11, showStepNavigation: true)
+            }
+        }
+    }
+}
+
+// MARK: - Job Row
+
+struct JobRow: View {
+    let job: WorkflowJob
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    @State private var isExpanded: Bool = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Job header
+            Button(action: onSelect) {
+                HStack(spacing: 8) {
+                    // Expand/collapse for steps
+                    if !job.steps.isEmpty {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isExpanded.toggle()
+                            }
+                        } label: {
+                            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .buttonStyle(.plain)
+                        .frame(width: 12)
+                    } else {
+                        Spacer()
+                            .frame(width: 12)
+                    }
+
+                    // Status icon
+                    jobStatusIcon
+
+                    // Job name
+                    Text(job.name)
+                        .font(.system(size: 12))
+                        .lineLimit(1)
+
+                    Spacer()
+
+                    // Duration
+                    if !job.durationString.isEmpty {
+                        Text(job.durationString)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .modifier(JobRowSelectionModifier(isSelected: isSelected))
+            }
+            .buttonStyle(.plain)
+
+            // Steps
+            if isExpanded && !job.steps.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(job.steps) { step in
+                        StepRow(step: step)
+                    }
+                }
+                .padding(.leading, 32)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var jobStatusIcon: some View {
+        if job.status == .inProgress {
+            ProgressView()
+                .controlSize(.mini)
+                .frame(width: 14, height: 14)
+        } else {
+            Image(systemName: statusIcon)
+                .font(.system(size: 12))
+                .foregroundStyle(statusColor)
+        }
+    }
+
+    private var statusIcon: String {
+        if let conclusion = job.conclusion {
+            switch conclusion {
+            case .success: return "checkmark.circle.fill"
+            case .failure: return "xmark.circle.fill"
+            case .cancelled: return "stop.circle.fill"
+            case .skipped: return "arrow.right.circle.fill"
+            default: return "circle.fill"
+            }
+        }
+        switch job.status {
+        case .queued, .pending, .waiting: return "clock.fill"
+        case .inProgress: return "play.circle.fill"
+        default: return "circle.fill"
+        }
+    }
+
+    private var statusColor: Color {
+        if let conclusion = job.conclusion {
+            switch conclusion {
+            case .success: return .green
+            case .failure: return .red
+            case .cancelled, .skipped: return .gray
+            default: return .secondary
+            }
+        }
+        return .yellow
+    }
+}
+
+// MARK: - Step Row
+
+struct StepRow: View {
+    let step: WorkflowStep
+
+    var body: some View {
+        HStack(spacing: 6) {
+            // Connector line
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor))
+                .frame(width: 1)
+                .padding(.vertical, 2)
+
+            // Status icon
+            stepStatusIcon
+                .frame(width: 12)
+
+            // Step name
+            Text(step.name)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            Spacer()
+        }
+        .padding(.vertical, 3)
+        .padding(.trailing, 12)
+    }
+
+    @ViewBuilder
+    private var stepStatusIcon: some View {
+        if step.status == .inProgress {
+            ProgressView()
+                .controlSize(.mini)
+                .frame(width: 10, height: 10)
+        } else {
+            Image(systemName: statusIcon)
+                .font(.system(size: 9))
+                .foregroundStyle(statusColor)
+        }
+    }
+
+    private var statusIcon: String {
+        if let conclusion = step.conclusion {
+            switch conclusion {
+            case .success: return "checkmark"
+            case .failure: return "xmark"
+            case .skipped: return "arrow.right"
+            default: return "circle"
+            }
+        }
+        switch step.status {
+        case .queued, .pending, .waiting: return "clock"
+        case .inProgress: return "play"
+        default: return "circle"
+        }
+    }
+
+    private var statusColor: Color {
+        if let conclusion = step.conclusion {
+            switch conclusion {
+            case .success: return .green
+            case .failure: return .red
+            case .skipped: return .gray
+            default: return .secondary
+            }
+        }
+        return .yellow
+    }
+}
+
+// MARK: - Liquid Glass Modifier with Fallback
+
+struct GlassBackgroundModifier: ViewModifier {
+    let fallbackColor: Color
+    let tint: Color?
+    let cornerRadius: CGFloat
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content
+                .glassEffect(
+                    tint.map { .regular.tint($0) } ?? .regular,
+                    in: RoundedRectangle(cornerRadius: cornerRadius)
+                )
+        } else {
+            content
+                .background(fallbackColor)
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        }
+    }
+}
+
+struct GlassPanelModifier: ViewModifier {
+    let cornerRadius: CGFloat
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius))
+        } else {
+            content
+                .background(Color(nsColor: .controlBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        }
+    }
+}
+
+struct JobRowSelectionModifier: ViewModifier {
+    let isSelected: Bool
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content
+                .background {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(.clear)
+                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 4))
+                    }
+                }
+        } else {
+            content
+                .background(isSelected ? Color(nsColor: .selectedContentBackgroundColor) : Color.clear)
+        }
+    }
+}

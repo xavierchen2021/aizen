@@ -12,12 +12,14 @@ enum GitPanelTab: String, CaseIterable {
     case git = "Git"
     case history = "History"
     case comments = "Comments"
+    case workflows = "Workflows"
 
     var icon: String {
         switch self {
         case .git: return "tray.full"
         case .history: return "clock"
         case .comments: return "text.bubble"
+        case .workflows: return "bolt.circle"
         }
     }
 }
@@ -42,6 +44,8 @@ struct GitPanelWindowContent: View {
     @State private var diffReloadTask: Task<Void, Never>?
 
     @StateObject private var reviewManager = ReviewSessionManager()
+    @StateObject private var workflowService = WorkflowService()
+    @State private var selectedWorkflowForTrigger: Workflow?
 
     @AppStorage("editorFontFamily") private var editorFontFamily: String = "Menlo"
     @AppStorage("diffFontSize") private var diffFontSize: Double = 11.0
@@ -79,8 +83,8 @@ struct GitPanelWindowContent: View {
             // Resizable divider
             resizableDivider
 
-            // Right: Diff view
-            diffPanel
+            // Right: Diff view or Workflow details
+            rightPanel
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onAppear {
@@ -91,6 +95,14 @@ struct GitPanelWindowContent: View {
             reviewManager.load(for: worktreePath)
             updateChangedFilesCache()
             setupGitWatcher()
+
+            // Initialize workflow service
+            Task {
+                await workflowService.configure(
+                    repoPath: worktreePath,
+                    branch: gitStatus.currentBranch ?? "main"
+                )
+            }
         }
         .onDisappear {
             if let token = gitIndexWatchToken {
@@ -154,6 +166,16 @@ struct GitPanelWindowContent: View {
                 }
             )
         }
+        .sheet(item: $selectedWorkflowForTrigger) { workflow in
+            WorkflowTriggerFormView(
+                workflow: workflow,
+                currentBranch: gitStatus.currentBranch ?? "main",
+                service: workflowService,
+                onDismiss: {
+                    selectedWorkflowForTrigger = nil
+                }
+            )
+        }
     }
 
     // MARK: - Left Panel (Tab Content)
@@ -187,6 +209,17 @@ struct GitPanelWindowContent: View {
                 },
                 onSendToAgent: {
                     showAgentPicker = true
+                }
+            )
+        case .workflows:
+            WorkflowSidebarView(
+                service: workflowService,
+                onSelect: { workflow in
+                    workflowService.selectedWorkflow = workflow
+                    workflowService.selectedRun = nil
+                },
+                onTrigger: { workflow in
+                    selectedWorkflowForTrigger = workflow
                 }
             )
         }
@@ -349,6 +382,49 @@ struct GitPanelWindowContent: View {
         .onChange(of: diffOutput) { _ in
             validateCommentsAgainstDiff()
         }
+    }
+
+    // MARK: - Right Panel
+
+    @ViewBuilder
+    private var rightPanel: some View {
+        if selectedTab == .workflows {
+            workflowDetailPanel
+        } else {
+            diffPanel
+        }
+    }
+
+    private var workflowDetailPanel: some View {
+        Group {
+            if let workflow = workflowService.selectedWorkflow {
+                WorkflowFileView(workflow: workflow, worktreePath: worktreePath)
+                    .id(workflow.id)
+            } else if workflowService.selectedRun != nil {
+                WorkflowRunDetailView(service: workflowService)
+            } else {
+                workflowEmptyState
+            }
+        }
+    }
+
+    private var workflowEmptyState: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "bolt.circle")
+                .font(.system(size: 48))
+                .foregroundStyle(.tertiary)
+
+            Text("Select a workflow run")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+
+            Text("Choose a run from the list to view details, jobs, and logs.")
+                .font(.subheadline)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 300)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Divider

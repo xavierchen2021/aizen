@@ -15,6 +15,9 @@ struct RootView: View {
     @State private var gitPanelController: GitPanelWindowController?
     @StateObject private var repositoryManager: RepositoryManager
 
+    // Persist open Git panel worktree for restoration
+    @AppStorage("openGitPanelWorktreeURI") private var openGitPanelWorktreeURI: String = ""
+
     init(context: NSManagedObjectContext) {
         self.context = context
         _repositoryManager = StateObject(wrappedValue: RepositoryManager(viewContext: context))
@@ -26,16 +29,23 @@ struct RootView: View {
             repositoryManager: repositoryManager,
             gitChangesContext: $gitChangesContext
         )
+        .onAppear {
+            restoreGitPanelIfNeeded()
+        }
         .onChange(of: gitChangesContext) { newContext in
-            if let context = newContext, !context.worktree.isDeleted {
+            if let ctx = newContext, !ctx.worktree.isDeleted {
                 // Close existing window if any
                 gitPanelController?.close()
 
+                // Persist worktree URI for restoration
+                openGitPanelWorktreeURI = ctx.worktree.objectID.uriRepresentation().absoluteString
+
                 // Create and show new window
                 gitPanelController = GitPanelWindowController(
-                    context: context,
+                    context: ctx,
                     repositoryManager: repositoryManager,
                     onClose: {
+                        openGitPanelWorktreeURI = ""
                         gitChangesContext = nil
                         gitPanelController = nil
                     }
@@ -43,10 +53,28 @@ struct RootView: View {
                 gitPanelController?.showWindow(nil)
             } else if newContext == nil {
                 // Close window when context is cleared
+                openGitPanelWorktreeURI = ""
                 gitPanelController?.close()
                 gitPanelController = nil
             }
         }
+    }
+
+    private func restoreGitPanelIfNeeded() {
+        guard !openGitPanelWorktreeURI.isEmpty,
+              let url = URL(string: openGitPanelWorktreeURI),
+              let objectID = context.persistentStoreCoordinator?.managedObjectID(forURIRepresentation: url),
+              let worktree = try? context.existingObject(with: objectID) as? Worktree,
+              !worktree.isDeleted,
+              let path = worktree.path else {
+            // Clear invalid URI
+            openGitPanelWorktreeURI = ""
+            return
+        }
+
+        // Recreate the Git panel context
+        let service = GitRepositoryService(worktreePath: path)
+        gitChangesContext = GitChangesContext(worktree: worktree, service: service)
     }
 }
 

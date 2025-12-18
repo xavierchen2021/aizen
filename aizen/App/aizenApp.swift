@@ -9,8 +9,35 @@ import SwiftUI
 import CoreData
 import Sparkle
 
+// App delegate to handle window restoration cleanup
+class AizenAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Close duplicate main windows that macOS incorrectly restored
+        // Keep only one main window (non-GitPanel window)
+        DispatchQueue.main.async {
+            let windows = NSApp.windows.filter { window in
+                // Keep windows that are Git panels (we restore those ourselves)
+                // or the first main window
+                window.identifier != NSUserInterfaceItemIdentifier("GitPanelWindow") &&
+                window.isVisible &&
+                !window.isMiniaturized
+            }
+
+            // If there are multiple main windows, close the extras
+            if windows.count > 1 {
+                // Keep the first one, close the rest
+                for window in windows.dropFirst() {
+                    window.close()
+                }
+            }
+        }
+    }
+}
+
 @main
 struct aizenApp: App {
+    @NSApplicationDelegateAdaptor(AizenAppDelegate.self) var appDelegate
+
     let persistenceController = PersistenceController.shared
     @StateObject private var ghosttyApp = Ghostty.App()
     @FocusedValue(\.terminalSplitActions) private var splitActions

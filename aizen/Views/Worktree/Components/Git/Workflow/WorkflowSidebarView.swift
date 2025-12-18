@@ -1,0 +1,492 @@
+//
+//  WorkflowSidebarView.swift
+//  aizen
+//
+//  Sidebar view for workflow list and runs selection
+//
+
+import SwiftUI
+
+struct WorkflowSidebarView: View {
+    @ObservedObject var service: WorkflowService
+    let onSelect: (Workflow) -> Void
+    let onTrigger: (Workflow) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            sidebarHeader
+
+            Divider()
+
+            if service.isInitializing {
+                initializingView
+            } else if !service.isConfigured {
+                noProviderView
+            } else if !service.isCLIInstalled {
+                cliNotInstalledView
+            } else if !service.isAuthenticated {
+                notAuthenticatedView
+            } else {
+                // Content
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        workflowsSection
+                        runsSection
+                    }
+                    .padding()
+                }
+            }
+
+            // Error banner
+            if let error = service.error {
+                errorBanner(error)
+            }
+        }
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    // MARK: - Header
+
+    private var sidebarHeader: some View {
+        HStack {
+            Image(systemName: service.provider == .github ? "bolt.circle.fill" : "gearshape.2.fill")
+                .foregroundStyle(.secondary)
+
+            Text(service.provider.displayName)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+
+            Spacer()
+
+            if service.isLoading {
+                ProgressView()
+                    .controlSize(.small)
+            }
+
+            Button {
+                Task {
+                    await service.refresh()
+                }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+            }
+            .buttonStyle(.borderless)
+            .help("Refresh")
+        }
+        .frame(height: 44)
+        .padding(.horizontal, 12)
+    }
+
+    // MARK: - Workflows Section
+
+    private var workflowsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Workflows")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+
+            if service.workflows.isEmpty {
+                HStack {
+                    Image(systemName: "doc.badge.gearshape")
+                        .foregroundStyle(.tertiary)
+                    Text("No workflows found")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 8)
+            } else {
+                ForEach(service.workflows) { workflow in
+                    WorkflowSidebarRow(
+                        workflow: workflow,
+                        isSelected: service.selectedWorkflow?.id == workflow.id,
+                        onSelect: { onSelect(workflow) },
+                        onTrigger: onTrigger
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - Runs Section
+
+    private var runsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Recent Runs")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+
+            if service.runs.isEmpty {
+                HStack {
+                    Image(systemName: "clock.badge.questionmark")
+                        .foregroundStyle(.tertiary)
+                    Text("No runs found")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 8)
+            } else {
+                ForEach(service.runs) { run in
+                    RunSidebarRow(
+                        run: run,
+                        isSelected: service.selectedRun?.id == run.id,
+                        onSelect: {
+                            Task {
+                                await service.selectRun(run)
+                            }
+                        },
+                        onCancel: {
+                            Task {
+                                _ = await service.cancelRun(run)
+                            }
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - Empty States
+
+    private var initializingView: some View {
+        VStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text("Checking CLI...")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var noProviderView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "bolt.slash")
+                .font(.system(size: 32))
+                .foregroundStyle(.tertiary)
+
+            Text("No CI/CD Provider")
+                .font(.subheadline)
+                .fontWeight(.medium)
+
+            Text("Add workflow files to get started")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    private var cliNotInstalledView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "terminal")
+                .font(.system(size: 32))
+                .foregroundStyle(.tertiary)
+
+            Text("\(service.provider.cliCommand) Not Installed")
+                .font(.subheadline)
+                .fontWeight(.medium)
+
+            Text("brew install \(service.provider.cliCommand)")
+                .font(.system(.caption, design: .monospaced))
+                .padding(6)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .cornerRadius(4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    private var notAuthenticatedView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "person.badge.key")
+                .font(.system(size: 32))
+                .foregroundStyle(.tertiary)
+
+            Text("Not Authenticated")
+                .font(.subheadline)
+                .fontWeight(.medium)
+
+            Text("\(service.provider.cliCommand) auth login")
+                .font(.system(.caption, design: .monospaced))
+                .padding(6)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .cornerRadius(4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+    }
+
+    private func errorBanner(_ error: WorkflowError) -> some View {
+        HStack {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.yellow)
+                .font(.caption)
+
+            Text(error.localizedDescription)
+                .font(.caption2)
+                .lineLimit(2)
+
+            Spacer()
+
+            Button {
+                service.error = nil
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption2)
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(6)
+        .background(Color.yellow.opacity(0.1))
+    }
+}
+
+// MARK: - Workflow Row
+
+struct WorkflowSidebarRow: View {
+    let workflow: Workflow
+    let isSelected: Bool
+    let onSelect: () -> Void
+    let onTrigger: (Workflow) -> Void
+
+    @State private var isHovered: Bool = false
+    @State private var isButtonHovered: Bool = false
+    @State private var isButtonPressed: Bool = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            // Workflow info (two lines) - clickable area
+            VStack(alignment: .leading, spacing: 2) {
+                Text(workflow.name)
+                    .font(.system(size: 13, weight: .medium))
+                    .lineLimit(1)
+
+                Text(workflow.path)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onSelect()
+            }
+
+            // Trigger button
+            if workflow.canTrigger {
+                ZStack {
+                    Circle()
+                        .fill(.clear)
+                        .frame(width: 32, height: 32)
+
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(isButtonHovered ? .white : .secondary)
+                }
+                .background {
+                    glassPlayButtonBackground
+                }
+                .scaleEffect(isButtonPressed ? 0.92 : (isButtonHovered ? 1.05 : 1.0))
+                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isButtonHovered)
+                .animation(.spring(response: 0.2, dampingFraction: 0.5), value: isButtonPressed)
+                .onHover { hovering in
+                    isButtonHovered = hovering
+                }
+                .onTapGesture {
+                    onTrigger(workflow)
+                }
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { _ in isButtonPressed = true }
+                        .onEnded { _ in isButtonPressed = false }
+                )
+                .help("Run workflow")
+            } else {
+                Image(systemName: "pause.circle")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 32, height: 32)
+                    .help("Workflow is disabled")
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background {
+            glassRowBackground
+        }
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hovering
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var glassRowBackground: some View {
+        if #available(macOS 26.0, *) {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.clear)
+                .glassEffect(
+                    isSelected ? .regular.tint(.accentColor.opacity(0.3)) : .regular,
+                    in: RoundedRectangle(cornerRadius: 12)
+                )
+                .opacity(isSelected ? 1 : (isHovered ? 0.9 : 0.7))
+        } else {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(nsColor: isSelected ? .selectedContentBackgroundColor : .controlBackgroundColor))
+                .opacity(isSelected ? 1 : (isHovered ? 0.9 : 0.7))
+        }
+    }
+
+    @ViewBuilder
+    private var glassPlayButtonBackground: some View {
+        if #available(macOS 26.0, *) {
+            Circle()
+                .fill(.clear)
+                .frame(width: 32, height: 32)
+                .glassEffect(
+                    isButtonHovered ? .regular.tint(.accentColor) : .regular,
+                    in: Circle()
+                )
+        } else {
+            Circle()
+                .fill(isButtonHovered ? Color.accentColor : Color(nsColor: .controlBackgroundColor))
+                .frame(width: 32, height: 32)
+                .overlay(
+                    Circle()
+                        .strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5)
+                )
+        }
+    }
+}
+
+// MARK: - Run Row
+
+struct RunSidebarRow: View {
+    let run: WorkflowRun
+    let isSelected: Bool
+    let onSelect: () -> Void
+    let onCancel: () -> Void
+
+    @State private var isHovered: Bool = false
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 8) {
+                // Status icon
+                statusIcon
+                    .frame(width: 14)
+
+                // Run info
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 4) {
+                        Text("#\(run.runNumber)")
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+
+                        Text(run.workflowName)
+                            .font(.system(size: 11))
+                            .lineLimit(1)
+                    }
+
+                    HStack(spacing: 4) {
+                        Text(run.commit)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+
+                        if let startedAt = run.startedAt {
+                            Text(relativeTime(from: startedAt))
+                                .font(.system(size: 10))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+
+                Spacer()
+
+                // Cancel button
+                if run.isInProgress && isHovered {
+                    Button {
+                        onCancel()
+                    } label: {
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Cancel run")
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .modifier(SelectableRowModifier(isSelected: isSelected, isHovered: isHovered))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            isHovered = hovering
+        }
+    }
+
+    @ViewBuilder
+    private var statusIcon: some View {
+        if run.isInProgress {
+            ProgressView()
+                .controlSize(.mini)
+                .frame(width: 14, height: 14)
+        } else {
+            Image(systemName: run.statusIcon)
+                .font(.system(size: 12))
+                .foregroundStyle(statusColor)
+        }
+    }
+
+    private var statusColor: Color {
+        switch run.statusColor {
+        case "green": return .green
+        case "red": return .red
+        case "yellow": return .yellow
+        case "orange": return .orange
+        default: return .gray
+        }
+    }
+
+    private func relativeTime(from date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+}
+
+// MARK: - Selectable Row Modifier with Liquid Glass
+
+struct SelectableRowModifier: ViewModifier {
+    let isSelected: Bool
+    let isHovered: Bool
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content
+                .background {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(.clear)
+                            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 6))
+                    } else if isHovered {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(.clear)
+                            .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 6))
+                    }
+                }
+        } else {
+            content
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(isSelected ? Color(nsColor: .selectedContentBackgroundColor) : (isHovered ? Color(nsColor: .unemphasizedSelectedContentBackgroundColor) : Color.clear))
+                )
+        }
+    }
+}

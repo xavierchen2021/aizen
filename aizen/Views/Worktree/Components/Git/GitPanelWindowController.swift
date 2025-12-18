@@ -25,6 +25,11 @@ class GitPanelWindowController: NSWindowController {
             defer: false
         )
 
+        // Exclude from macOS window restoration - we handle restoration ourselves
+        window.isRestorable = false
+        window.identifier = NSUserInterfaceItemIdentifier("GitPanelWindow")
+        window.isExcludedFromWindowsMenu = false
+
         // Set title to repository name, subtitle to worktree path
         let repoName = context.worktree.repository?.name ?? "Repository"
         let worktreePath = context.worktree.path ?? ""
