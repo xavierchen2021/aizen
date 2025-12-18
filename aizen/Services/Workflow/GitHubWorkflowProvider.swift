@@ -217,7 +217,7 @@ actor GitHubWorkflowProvider: WorkflowProviderProtocol {
                let timestampRange = Range(match.range(at: 1), in: line) {
                 let timestampStr = String(line[timestampRange])
                 let formatter = ISO8601DateFormatter()
-                formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                formatter.formatOptions = [.withInternetDateTime]
                 timestamp = formatter.date(from: timestampStr + "Z")
 
                 // Remove timestamp from content

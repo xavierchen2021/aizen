@@ -166,25 +166,29 @@ class WorkflowService: ObservableObject {
         let path = repoPath
         let runId = run.id
 
-        // Load jobs in background (don't await - let it update when ready)
-        Task.detached { [weak self] in
+        // Load jobs first, then load logs for the first job
+        Task { [weak self] in
             do {
                 let jobs = try await provider?.getRunJobs(repoPath: path, runId: runId) ?? []
                 await MainActor.run {
                     self?.selectedRunJobs = jobs
                 }
-            } catch {
-                // Silently fail, jobs will remain empty
-            }
-        }
 
-        // Start log polling if run is in progress, otherwise load once (non-blocking)
-        if run.isInProgress {
-            startLogPolling(runId: run.id)
-        } else {
-            // Load logs in background (don't await)
-            Task {
-                await loadLogs(runId: run.id)
+                // Auto-load logs for first job (or first failed job) to show proper step names
+                if let firstJob = jobs.first(where: { $0.conclusion == .failure }) ?? jobs.first {
+                    await self?.loadLogs(runId: runId, jobId: firstJob.id)
+                } else {
+                    // No jobs, fall back to plain text
+                    await self?.loadLogs(runId: runId)
+                }
+
+                // Start polling if in progress
+                if run.isInProgress {
+                    self?.startLogPolling(runId: run.id)
+                }
+            } catch {
+                // Fall back to plain text logs
+                await self?.loadLogs(runId: runId)
             }
         }
     }
