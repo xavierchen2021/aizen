@@ -132,7 +132,7 @@ class FileSearchPanel: NSPanel {
         // Make panel fully transparent - no window background at all
         self.isOpaque = false
         self.backgroundColor = NSColor.clear
-        self.hasShadow = false
+        self.hasShadow = true
         self.level = .floating
         self.isMovableByWindowBackground = false
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -194,7 +194,12 @@ struct FileSearchWindowContent: View {
     }
 
     var body: some View {
-        LiquidGlassCard(tint: .black.opacity(0.30), sheenOpacity: 0.28, scrimOpacity: 0.14) {
+        LiquidGlassCard(
+            shadowOpacity: 0,
+            tint: .black.opacity(0.30),
+            sheenOpacity: 0.28,
+            scrimOpacity: 0.14
+        ) {
             VStack(spacing: 0) {
                 SpotlightSearchField(
                     placeholder: "Search files…",
