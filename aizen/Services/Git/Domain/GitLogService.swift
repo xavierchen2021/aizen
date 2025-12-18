@@ -35,19 +35,22 @@ actor GitLogService {
     func getCommitDiff(hash: String, at repoPath: String) async throws -> String {
         // For detailed commit diff display, use git command as libgit2 diff output
         // doesn't format nicely for display
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = ["show", "--format=", hash]
-        process.currentDirectoryURL = URL(fileURLWithPath: repoPath)
+        // Run on background thread to avoid blocking actor
+        return try await Task.detached {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+            process.arguments = ["show", "--format=", hash]
+            process.currentDirectoryURL = URL(fileURLWithPath: repoPath)
 
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = FileHandle.nullDevice
 
-        try process.run()
-        process.waitUntilExit()
+            try process.run()
+            process.waitUntilExit()
 
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        return String(data: data, encoding: .utf8) ?? ""
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            return String(data: data, encoding: .utf8) ?? ""
+        }.value
     }
 }

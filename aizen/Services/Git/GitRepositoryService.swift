@@ -22,6 +22,11 @@ class GitRepositoryService: ObservableObject {
     private let branchService = GitBranchService()
     private let remoteService = GitRemoteService()
 
+    // Debouncing for status reload
+    private var statusReloadTask: Task<Void, Never>?
+    private var isStatusReloadPending = false
+    private let statusReloadDebounceInterval: TimeInterval = 0.3
+
     init(worktreePath: String) {
         self.worktreePath = worktreePath
     }
@@ -320,6 +325,38 @@ class GitRepositoryService: ObservableObject {
     // MARK: - Status Loading
 
     func reloadStatus() {
+        // If reload already pending, just mark that we need another one after
+        if isStatusReloadPending {
+            return
+        }
+        isStatusReloadPending = true
+
+        // Cancel any existing debounce task
+        statusReloadTask?.cancel()
+
+        statusReloadTask = Task.detached { [weak self] in
+            guard let self = self else { return }
+
+            // Debounce - wait before actually reloading
+            do {
+                try await Task.sleep(for: .seconds(self.statusReloadDebounceInterval))
+            } catch {
+                return  // Cancelled
+            }
+
+            guard !Task.isCancelled else { return }
+
+            // Clear pending flag on MainActor
+            await MainActor.run {
+                self.isStatusReloadPending = false
+            }
+
+            await self.reloadStatusInternal()
+        }
+    }
+
+    /// Force immediate status reload without debouncing (for use after operations)
+    private func reloadStatusImmediate() {
         Task.detached { [weak self] in
             guard let self = self else { return }
             await self.reloadStatusInternal()

@@ -178,13 +178,13 @@ struct GitPanelWindowContentWithToolbar: View {
                     }
                 }
                 Button("Open in Browser") {
-                    if let branch = gitStatus.currentBranch {
-                        Task {
-                            await gitHostingService.openInBrowser(
-                                info: info,
-                                action: .createPR(sourceBranch: branch, targetBranch: nil)
-                            )
-                        }
+                    let branch = gitStatus.currentBranch
+                    guard !branch.isEmpty else { return }
+                    Task {
+                        await gitHostingService.openInBrowser(
+                            info: info,
+                            action: .createPR(sourceBranch: branch, targetBranch: nil)
+                        )
                     }
                 }
                 Button("Cancel", role: .cancel) {}
@@ -218,7 +218,7 @@ struct GitPanelWindowContentWithToolbar: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "arrow.triangle.branch")
-                Text(gitStatus.currentBranch ?? "HEAD")
+                Text(gitStatus.currentBranch.isEmpty ? "HEAD" : gitStatus.currentBranch)
                     .lineLimit(1)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 10))
@@ -406,9 +406,14 @@ struct GitPanelWindowContentWithToolbar: View {
 
     private func refreshPRStatus() async {
         guard let path = worktree.path,
-              let branch = gitStatus.currentBranch,
               let info = hostingInfo,
               info.cliInstalled && info.cliAuthenticated else {
+            prStatus = .unknown
+            return
+        }
+
+        let branch = gitStatus.currentBranch
+        guard !branch.isEmpty else {
             prStatus = .unknown
             return
         }
@@ -417,8 +422,9 @@ struct GitPanelWindowContentWithToolbar: View {
     }
 
     private func createPR() {
-        guard let info = hostingInfo,
-              let branch = gitStatus.currentBranch else { return }
+        guard let info = hostingInfo else { return }
+        let branch = gitStatus.currentBranch
+        guard !branch.isEmpty else { return }
 
         // Check if CLI is available
         if !info.cliInstalled || !info.cliAuthenticated {
