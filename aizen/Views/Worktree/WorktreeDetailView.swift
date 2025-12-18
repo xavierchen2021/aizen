@@ -38,6 +38,7 @@ struct WorktreeDetailView: View {
     @State private var gitIndexWatcher: GitIndexWatcher?
     @State private var fileSearchWindowController: FileSearchWindowController?
     @State private var fileToOpenFromSearch: String?
+    @State private var cachedTerminalBackgroundColor: Color?
 
     init(worktree: Worktree, repositoryManager: RepositoryManager, tabStateManager: WorktreeTabStateManager, gitChangesContext: Binding<GitChangesContext?>, onWorktreeDeleted: ((Worktree?) -> Void)? = nil) {
         self.worktree = worktree
@@ -381,7 +382,7 @@ struct WorktreeDetailView: View {
     private var mainContentWithSidebars: some View {
         contentView
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(selectedTab == "terminal" ? getTerminalBackgroundColor() : nil)
+            .background(selectedTab == "terminal" ? cachedTerminalBackgroundColor : nil)
             .onReceive(NotificationCenter.default.publisher(for: .fileSearchShortcut)) { _ in
                 showFileSearch()
             }
@@ -447,6 +448,10 @@ struct WorktreeDetailView: View {
             .toast()
             .onAppear {
                 validateSelectedTab()
+                cachedTerminalBackgroundColor = getTerminalBackgroundColor()
+            }
+            .onChange(of: terminalThemeName) { _ in
+                cachedTerminalBackgroundColor = getTerminalBackgroundColor()
             }
             .toolbar {
                 leadingToolbarItems

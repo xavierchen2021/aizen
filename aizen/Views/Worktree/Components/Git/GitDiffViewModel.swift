@@ -168,34 +168,38 @@ class GitDiffViewModel: ObservableObject {
 
     private func loadUntrackedFileAsDiff(_ file: String) async -> [DiffLine] {
         let fullPath = (repoPath as NSString).appendingPathComponent(file)
-        guard let content = try? String(contentsOfFile: fullPath, encoding: .utf8) else {
-            return []
-        }
 
-        let fileLines = content.components(separatedBy: .newlines)
-        var diffLines: [DiffLine] = []
+        // Read file on background thread to avoid blocking UI
+        return await Task.detached {
+            guard let content = try? String(contentsOfFile: fullPath, encoding: .utf8) else {
+                return [DiffLine]()
+            }
 
-        // Add header
-        diffLines.append(DiffLine(
-            lineNumber: 0,
-            oldLineNumber: nil,
-            newLineNumber: nil,
-            content: "new file: \(file)",
-            type: .header
-        ))
+            let fileLines = content.components(separatedBy: .newlines)
+            var diffLines: [DiffLine] = []
 
-        // Add all lines as additions
-        for (index, line) in fileLines.enumerated() {
+            // Add header
             diffLines.append(DiffLine(
-                lineNumber: index + 1,
+                lineNumber: 0,
                 oldLineNumber: nil,
-                newLineNumber: String(index + 1),
-                content: line,
-                type: .added
+                newLineNumber: nil,
+                content: "new file: \(file)",
+                type: .header
             ))
-        }
 
-        return diffLines
+            // Add all lines as additions
+            for (index, line) in fileLines.enumerated() {
+                diffLines.append(DiffLine(
+                    lineNumber: index + 1,
+                    oldLineNumber: nil,
+                    newLineNumber: String(index + 1),
+                    content: line,
+                    type: .added
+                ))
+            }
+
+            return diffLines
+        }.value
     }
 
     /// Get unified diff output using libgit2
