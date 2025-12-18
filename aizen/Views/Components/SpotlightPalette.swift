@@ -20,8 +20,13 @@ struct LiquidGlassCard<Content: View>: View {
         Group {
             if #available(macOS 26.0, *) {
                 GlassEffectContainer {
-                    content()
-                        .glassEffect(.regular.tint(tint), in: shape)
+                    ZStack {
+                        shape
+                            .fill(.white.opacity(0.001))
+                            .glassEffect(.regular.tint(tint), in: shape)
+
+                        content()
+                    }
                 }
             } else {
                 content()

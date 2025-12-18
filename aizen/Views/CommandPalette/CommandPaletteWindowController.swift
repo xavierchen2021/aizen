@@ -248,6 +248,9 @@ struct CommandPaletteContent: View {
                 .padding(.vertical, 10)
                 .padding(.horizontal, 10)
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
+            .scrollIndicators(.hidden)
             .frame(maxHeight: 380)
             .onChange(of: selectedIndex) { newIndex in
                 proxy.scrollTo(newIndex, anchor: .center)
