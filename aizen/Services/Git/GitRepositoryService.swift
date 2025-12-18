@@ -27,6 +27,7 @@ class GitRepositoryService: ObservableObject {
     private var isStatusReloadPending = false
     private let statusReloadDebounceInterval: TimeInterval = 0.3
     private var inFlightStatusTask: Task<Void, Never>?
+    private var pendingReloadIsLightweight = true
 
     init(worktreePath: String) {
         self.worktreePath = worktreePath
@@ -328,16 +329,16 @@ class GitRepositoryService: ObservableObject {
 
     // MARK: - Status Loading
 
-    func reloadStatus() {
+    func reloadStatus(lightweight: Bool = false) {
         Task { @MainActor [weak self] in
-            self?.reloadStatusDebouncedOnMain()
+            self?.reloadStatusDebouncedOnMain(lightweight: lightweight)
         }
     }
 
     /// Force immediate status reload without debouncing (for use after operations)
     private func reloadStatusImmediate() {
         Task { @MainActor [weak self] in
-            await self?.reloadStatusNowOnMain()
+            await self?.reloadStatusNowOnMain(lightweight: false)
         }
     }
 
@@ -347,7 +348,7 @@ class GitRepositoryService: ObservableObject {
             guard newPath != self.worktreePath else { return }
             self.worktreePath = newPath
             self.currentStatus = .empty
-            self.reloadStatusDebouncedOnMain()
+            self.reloadStatusDebouncedOnMain(lightweight: true)
         }
     }
 
@@ -359,7 +360,7 @@ class GitRepositoryService: ObservableObject {
                 await MainActor.run { original?() }
                 return
             }
-            await self.reloadStatusNow()
+            await self.reloadStatusNow(lightweight: false)
             await MainActor.run {
                 original?()
             }
@@ -390,12 +391,16 @@ class GitRepositoryService: ObservableObject {
     }
 
     private func reloadStatusInternal() async {
-        await reloadStatusNow()
+        await reloadStatusNow(lightweight: false)
     }
 
     nonisolated
-    private func loadGitStatus(at path: String) async throws -> GitStatus {
-        let detailedStatus = try await statusService.getDetailedStatus(at: path)
+    private func loadGitStatus(at path: String, lightweight: Bool) async throws -> GitStatus {
+        let detailedStatus = try await statusService.getDetailedStatus(
+            at: path,
+            includeUntracked: !lightweight,
+            includeDiffStats: !lightweight
+        )
 
         return GitStatus(
             stagedFiles: detailedStatus.stagedFiles,
@@ -410,10 +415,11 @@ class GitRepositoryService: ObservableObject {
         )
     }
 
-    private func reloadStatusNow() async {
+    private func reloadStatusNow(lightweight: Bool) async {
         let task = await MainActor.run { () -> Task<Void, Never>? in
             statusReloadTask?.cancel()
             isStatusReloadPending = false
+            pendingReloadIsLightweight = true
 
             let path = worktreePath
 
@@ -421,7 +427,7 @@ class GitRepositoryService: ObservableObject {
             let task = Task(priority: .utility) { [weak self] in
                 guard let self else { return }
                 do {
-                    let status = try await self.loadGitStatus(at: path)
+                    let status = try await self.loadGitStatus(at: path, lightweight: lightweight)
                     guard !Task.isCancelled else { return }
                     await MainActor.run {
                         // Guard against path changes while loading (e.g. worktree switch).
@@ -439,11 +445,17 @@ class GitRepositoryService: ObservableObject {
     }
 
     @MainActor
-    private func reloadStatusDebouncedOnMain() {
+    private func reloadStatusDebouncedOnMain(lightweight: Bool) {
         if isStatusReloadPending {
+            // Upgrade pending lightweight reload to full if requested.
+            if pendingReloadIsLightweight && !lightweight {
+                pendingReloadIsLightweight = false
+            }
             return
         }
+
         isStatusReloadPending = true
+        pendingReloadIsLightweight = lightweight
 
         statusReloadTask?.cancel()
         statusReloadTask = Task { [weak self] in
@@ -458,12 +470,13 @@ class GitRepositoryService: ObservableObject {
             await MainActor.run {
                 self.isStatusReloadPending = false
             }
-            await self.reloadStatusNow()
+            let doLightweight = await MainActor.run { self.pendingReloadIsLightweight }
+            await self.reloadStatusNow(lightweight: doLightweight)
         }
     }
 
     @MainActor
-    private func reloadStatusNowOnMain() async {
-        await reloadStatusNow()
+    private func reloadStatusNowOnMain(lightweight: Bool) async {
+        await reloadStatusNow(lightweight: lightweight)
     }
 }

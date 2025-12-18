@@ -23,6 +23,15 @@ enum ShellEnvironment {
             return cached
         }
 
+        // Never block the UI thread on a login-shell spawn.
+        // Return a best-effort environment immediately and warm the cache asynchronously.
+        if Thread.isMainThread {
+            DispatchQueue.global(qos: .utility).async {
+                _ = loadUserShellEnvironment()
+            }
+            return ProcessInfo.processInfo.environment
+        }
+
         let env = loadEnvironmentFromShell()
         cachedEnvironment = env
         return env

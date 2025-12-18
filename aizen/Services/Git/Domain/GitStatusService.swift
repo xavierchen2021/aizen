@@ -21,11 +21,15 @@ struct DetailedGitStatus {
 
 actor GitStatusService {
 
-    func getDetailedStatus(at path: String) async throws -> DetailedGitStatus {
+    func getDetailedStatus(
+        at path: String,
+        includeUntracked: Bool = true,
+        includeDiffStats: Bool = true
+    ) async throws -> DetailedGitStatus {
         // Run libgit2 operations on background thread to avoid blocking
         return try await Task.detached(priority: .utility) {
             let repo = try Libgit2Repository(path: path)
-            let status = try repo.status()
+            let status = try repo.status(includeUntracked: includeUntracked)
 
             // Get current branch name
             let currentBranch = try? repo.currentBranchName()
@@ -35,8 +39,13 @@ actor GitStatusService {
             let aheadBy = aheadBehind.ahead
             let behindBy = aheadBehind.behind
 
-            // Calculate additions/deletions from diff
-            let diffStats = try repo.diffStats()
+            // Calculate additions/deletions from diff (can be expensive on large repos)
+            let diffStats: Libgit2DiffStats
+            if includeDiffStats {
+                diffStats = (try? repo.diffStats()) ?? Libgit2DiffStats(filesChanged: 0, insertions: 0, deletions: 0)
+            } else {
+                diffStats = Libgit2DiffStats(filesChanged: 0, insertions: 0, deletions: 0)
+            }
 
             // Map entries to file paths
             let stagedFiles = status.staged.map { $0.path }
@@ -59,7 +68,7 @@ actor GitStatusService {
     }
 
     func getCurrentBranch(at path: String) async throws -> String {
-        return try await Task.detached {
+        return try await Task.detached(priority: .utility) {
             let repo = try Libgit2Repository(path: path)
             guard let branch = try repo.currentBranchName() else {
                 throw Libgit2Error.referenceNotFound("HEAD")

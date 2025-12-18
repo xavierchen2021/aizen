@@ -101,8 +101,10 @@ struct GitPanelWindowContent: View {
             gitIndexWatchToken = nil
         }
         .onChange(of: gitStatus) { _ in
-            updateChangedFilesCache()
-            reloadDiffDebounced()
+            let changed = updateChangedFilesCache()
+            if changed {
+                reloadDiffDebounced()
+            }
         }
         .onChange(of: selectedHistoryCommit) { commit in
             Task {
@@ -384,7 +386,7 @@ struct GitPanelWindowContent: View {
         Task {
             let token = await GitIndexWatchCenter.shared.addSubscriber(worktreePath: worktreePath) { [weak gitRepositoryService] in
                 Task { @MainActor in
-                    gitRepositoryService?.reloadStatus()
+                    gitRepositoryService?.reloadStatus(lightweight: true)
                 }
             }
             await MainActor.run {
@@ -393,7 +395,7 @@ struct GitPanelWindowContent: View {
         }
     }
 
-    private func updateChangedFilesCache() {
+    private func updateChangedFilesCache() -> Bool {
         var files = Set<String>()
         files.formUnion(gitStatus.stagedFiles)
         files.formUnion(gitStatus.modifiedFiles)
@@ -403,7 +405,9 @@ struct GitPanelWindowContent: View {
         let sortedFiles = files.sorted()
         if sortedFiles != cachedChangedFiles {
             cachedChangedFiles = sortedFiles
+            return true
         }
+        return false
     }
 
     private func validateCommentsAgainstDiff() {

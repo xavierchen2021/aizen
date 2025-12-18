@@ -211,7 +211,22 @@ class GitDiffViewModel: ObservableObject {
     /// Get unified diff output using libgit2
     private func runGitDiff(_ args: [String]) async -> String? {
         let path = repoPath
-        return await Task.detached {
+
+        // For single-file diffs, use the git CLI so we don't compute a full-repo diff.
+        if args.contains("--") {
+            do {
+                let result = try await ProcessExecutor.shared.executeWithOutput(
+                    executable: "/usr/bin/git",
+                    arguments: args,
+                    workingDirectory: path
+                )
+                return result.succeeded ? result.stdout : nil
+            } catch {
+                return nil
+            }
+        }
+
+        return await Task.detached(priority: .utility) {
             do {
                 let repo = try Libgit2Repository(path: path)
                 // Check if this is a HEAD diff or unstaged diff

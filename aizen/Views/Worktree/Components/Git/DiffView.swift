@@ -373,9 +373,20 @@ struct DiffView: NSViewRepresentable {
 
         private static func parseDiffOutput(diffOutput: String, showFileHeaders: Bool) -> ParsedDiffMetadata {
             var rawLines: [String] = []
-            rawLines.reserveCapacity(max(128, diffOutput.count / 48))
-            diffOutput.enumerateLines { line, _ in
+            let maxRawLines = 200_000
+            rawLines.reserveCapacity(min(max(128, diffOutput.count / 48), maxRawLines))
+            var didTruncate = false
+
+            diffOutput.enumerateLines { line, stop in
+                if rawLines.count >= maxRawLines {
+                    didTruncate = true
+                    stop = true
+                    return
+                }
                 rawLines.append(line)
+            }
+            if didTruncate {
+                rawLines.append("@@ ... diff view truncated (too many lines) ... @@")
             }
 
             var rowKinds: [RowKind] = []

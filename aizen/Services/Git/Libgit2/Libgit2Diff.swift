@@ -443,6 +443,8 @@ extension Libgit2Repository {
     /// Format libgit2 diff as unified diff string
     private func formatDiffAsUnified(_ diff: OpaquePointer) -> String {
         var output = ""
+        let maxBytes = 4_000_000
+        var bytesWritten = 0
 
         let numDeltas = git_diff_num_deltas(diff)
         for i in 0..<numDeltas {
@@ -457,7 +459,21 @@ extension Libgit2Repository {
             defer { git_buf_dispose(&buf) }
 
             if git_patch_to_buf(&buf, p) == 0, let ptr = buf.ptr {
-                output += String(cString: ptr)
+                let remaining = maxBytes - bytesWritten
+                if remaining <= 0 {
+                    output += "\n... diff truncated (too large) ...\n"
+                    break
+                }
+
+                let take = min(Int(buf.size), remaining)
+                let raw = UnsafeRawBufferPointer(start: ptr, count: take)
+                output += String(decoding: raw, as: UTF8.self)
+                bytesWritten += take
+
+                if take < Int(buf.size) {
+                    output += "\n... diff truncated (too large) ...\n"
+                    break
+                }
             }
         }
 
