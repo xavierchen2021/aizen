@@ -149,12 +149,6 @@ struct ActiveWorktreesView: View {
             syncSelectionIfNeeded()
         }
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                TitleSubtitleView(
-                    title: "Active Worktrees",
-                    subtitle: "\(selectionTitle) • \(selectionSubtitle)"
-                )
-            }
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     metrics.refreshNow()
@@ -266,6 +260,7 @@ struct ActiveWorktreesView: View {
         .padding(.top, 8)
         .padding(.horizontal, 16)
         .navigationTitle("Active Worktrees")
+        .navigationSubtitle("\(selectionTitle) • \(selectionSubtitle)")
     }
 
     private var metricsHeader: some View {
@@ -635,24 +630,6 @@ private struct SummaryBadge: View {
             .background(color.opacity(0.12))
             .foregroundStyle(color)
             .clipShape(Capsule())
-    }
-}
-
-private struct TitleSubtitleView: View {
-    let title: String
-    let subtitle: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.headline)
-                .lineLimit(1)
-            Text(subtitle)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-        }
     }
 }
 
