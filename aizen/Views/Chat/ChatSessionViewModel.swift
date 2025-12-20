@@ -394,8 +394,11 @@ class ChatSessionViewModel: ObservableObject {
                 self.syncMessages(newMessages)
 
                 // Only auto-scroll if user is near bottom
+                // Defer to next run loop to avoid "ScrollViewProxy may not be accessed during view updates"
                 if self.isNearBottom, let lastMessage = newMessages.last {
-                    self.scrollProxy?.scrollTo(lastMessage.id, anchor: .bottom)
+                    DispatchQueue.main.async {
+                        self.scrollProxy?.scrollTo(lastMessage.id, anchor: .bottom)
+                    }
                 }
             }
             .store(in: &cancellables)
@@ -409,11 +412,14 @@ class ChatSessionViewModel: ObservableObject {
                 let newToolCalls = session.toolCalls
                 self.syncToolCalls(newToolCalls)
                 // Only auto-scroll if user is near bottom
+                // Defer to next run loop to avoid "ScrollViewProxy may not be accessed during view updates"
                 if self.isNearBottom {
-                    if let lastCall = newToolCalls.last {
-                        self.scrollProxy?.scrollTo(lastCall.id, anchor: .bottom)
-                    } else if let lastMessage = self.messages.last {
-                        self.scrollProxy?.scrollTo(lastMessage.id, anchor: .bottom)
+                    DispatchQueue.main.async {
+                        if let lastCall = newToolCalls.last {
+                            self.scrollProxy?.scrollTo(lastCall.id, anchor: .bottom)
+                        } else if let lastMessage = self.messages.last {
+                            self.scrollProxy?.scrollTo(lastMessage.id, anchor: .bottom)
+                        }
                     }
                 }
             }
