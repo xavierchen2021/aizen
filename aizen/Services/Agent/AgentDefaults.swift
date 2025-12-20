@@ -32,6 +32,8 @@ extension AgentRegistry {
             return "\(basePath)/opencode/node_modules/.bin/opencode"
         case "vibe":
             return "\(basePath)/vibe/vibe-acp"
+        case "qwen":
+            return "\(basePath)/qwen/node_modules/.bin/qwen"
         default:
             return "\(basePath)/\(agentId)/\(agentId)"
         }
@@ -139,6 +141,20 @@ extension AgentRegistry {
                 executablePath: Self.managedPath(for: "vibe"),
                 launchArgs: [],
                 installMethod: .uv(package: "mistral-vibe")
+            )
+        }
+
+        updateBuiltInAgent("qwen", in: &metadata) {
+            AgentMetadata(
+                id: "qwen",
+                name: "Qwen Code",
+                description: "Alibaba's AI coding assistant powered by Qwen3-Coder",
+                iconType: .builtin("qwen"),
+                isBuiltIn: true,
+                isEnabled: true,
+                executablePath: Self.managedPath(for: "qwen"),
+                launchArgs: ["--experimental-acp"],
+                installMethod: .npm(package: "@qwen-code/qwen-code")
             )
         }
 

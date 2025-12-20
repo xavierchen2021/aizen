@@ -284,7 +284,7 @@ struct WorkspaceSidebarView: View {
 
             Divider()
 
-            // Upgrade to Pro (only when not licensed)
+            // Support Aizen (only when not licensed)
             if !isLicenseActive {
                 Button {
                     SettingsWindowManager.shared.show()
@@ -296,7 +296,7 @@ struct WorkspaceSidebarView: View {
                         Image(systemName: "sparkles")
                             .font(.system(size: 11))
                             .foregroundStyle(.orange)
-                        Text("sidebar.upgradeToPro")
+                        Text("sidebar.supportAizen")
                             .font(.subheadline)
                             .foregroundStyle(.primary)
                     }

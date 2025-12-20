@@ -131,6 +131,14 @@ actor MCPConfigManager {
                 format: .toml,
                 tomlStyle: .arrayOfTables
             )
+        case "qwen":
+            // Qwen uses settings.json with mcpServers (same format as Gemini)
+            return AgentMCPConfigSpec(
+                agentId: "qwen",
+                configPath: "~/.qwen/settings.json",
+                serverPath: ["mcpServers"],
+                format: .json
+            )
         default:
             return nil
         }

@@ -6337,13 +6337,13 @@
         }
       }
     },
-    "sidebar.upgradeToPro" : {
+    "sidebar.supportAizen" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Upgrade to Pro"
+            "value" : "Support Aizen"
           }
         }
       }

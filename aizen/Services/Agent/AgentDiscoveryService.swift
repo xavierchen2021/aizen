@@ -16,6 +16,7 @@ extension AgentRegistry {
         "gemini": ["gemini"],
         "kimi": ["kimi"],
         "opencode": ["opencode"],
+        "qwen": ["qwen"],
         "vibe": ["vibe-acp"]
     ]
 

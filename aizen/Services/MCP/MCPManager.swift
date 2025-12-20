@@ -133,7 +133,7 @@ class MCPManager: ObservableObject {
 
     static func supportsMCPManagement(agentId: String) -> Bool {
         switch agentId {
-        case "claude", "codex", "gemini", "opencode", "kimi", "vibe":
+        case "claude", "codex", "gemini", "opencode", "kimi", "vibe", "qwen":
             return true
         default:
             return false

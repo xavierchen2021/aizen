@@ -216,6 +216,29 @@ enum AgentConfigRegistry {
                 commandsDirectory: nil
             )
 
+        case "qwen":
+            return AgentConfigSpec(
+                agentId: "qwen",
+                configFiles: [
+                    AgentConfigFile(
+                        id: "qwen-rules",
+                        name: "Global Rules",
+                        path: "~/.qwen/QWEN.md",
+                        type: .markdown,
+                        isRulesFile: true,
+                        description: "Instructions that apply to all Qwen Code sessions"
+                    ),
+                    AgentConfigFile(
+                        id: "qwen-settings",
+                        name: "Settings",
+                        path: "~/.qwen/settings.json",
+                        type: .json,
+                        description: "Qwen Code settings, MCP servers, and preferences"
+                    )
+                ],
+                commandsDirectory: nil
+            )
+
         default:
             return AgentConfigSpec(
                 agentId: agentId,
@@ -226,6 +249,6 @@ enum AgentConfigRegistry {
     }
 
     static var supportedAgents: [String] {
-        ["claude", "codex", "gemini", "opencode", "vibe"]
+        ["claude", "codex", "gemini", "opencode", "qwen", "vibe"]
     }
 }
