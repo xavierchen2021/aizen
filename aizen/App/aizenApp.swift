@@ -63,6 +63,9 @@ struct aizenApp: App {
     @AppStorage("terminalSessionPersistence") private var sessionPersistence = false
 
     init() {
+        // Initialize crash reporter early to catch startup crashes
+        CrashReporter.shared.start()
+
         // Set launch source so libghostty knows to remove LANGUAGE env var
         // This makes terminal shells use system locale instead of macOS AppleLanguages
         setenv("GHOSTTY_MAC_LAUNCH_SOURCE", "app", 1)

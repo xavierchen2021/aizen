@@ -140,7 +140,14 @@ extension AgentSession {
                     currentThought = text
                 }
             case .plan(let plan):
-                agentPlan = plan
+                // Coalesce plan updates - only update if content changed
+                // This prevents excessive UI rebuilds when multiple agents stream plan updates
+                if agentPlan != plan {
+                    logger.debug("Plan updated: \(plan.entries.count) entries")
+                    agentPlan = plan
+                } else {
+                    logger.debug("Plan update skipped (identical content)")
+                }
             case .availableCommandsUpdate(let commands):
                 availableCommands = commands
             case .currentModeUpdate(let mode):

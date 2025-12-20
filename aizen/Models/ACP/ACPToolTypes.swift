@@ -211,7 +211,7 @@ enum PlanEntryStatus: String, Codable {
     case cancelled
 }
 
-struct PlanEntry: Codable {
+struct PlanEntry: Codable, Equatable {
     let content: String
     let priority: PlanPriority
     let status: PlanEntryStatus
@@ -221,8 +221,16 @@ struct PlanEntry: Codable {
     enum CodingKeys: String, CodingKey {
         case content, priority, status, activeForm, _meta
     }
+
+    static func == (lhs: PlanEntry, rhs: PlanEntry) -> Bool {
+        // Compare relevant fields, ignore _meta for equality
+        lhs.content == rhs.content &&
+        lhs.priority == rhs.priority &&
+        lhs.status == rhs.status &&
+        lhs.activeForm == rhs.activeForm
+    }
 }
 
-struct Plan: Codable {
+struct Plan: Codable, Equatable {
     let entries: [PlanEntry]
 }

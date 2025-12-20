@@ -27,4 +27,5 @@ extension Logger {
     static let settings = Logger.forCategory("Settings")
     static let audio = Logger.forCategory("Audio")
     static let acp = Logger.forCategory("ACP")
+    static let crash = Logger.forCategory("CrashReporter")
 }
