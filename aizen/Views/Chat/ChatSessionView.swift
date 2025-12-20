@@ -137,9 +137,10 @@ struct ChatSessionView: View {
                     )
                     .padding(.horizontal, 20)
                 }
-                .padding(.vertical, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 8)
             }
-            .frame(maxWidth: 900)
+            .frame(maxWidth: 1100)
             .frame(maxWidth: .infinity)
         }
         .focusedSceneValue(\.chatActions, ChatActions(cycleModeForward: viewModel.cycleModeForward))
