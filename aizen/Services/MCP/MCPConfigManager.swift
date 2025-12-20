@@ -498,7 +498,7 @@ actor MCPConfigManager {
             if trimmed == "[[mcp_servers]]" {
                 // Save previous server if exists
                 if let server = currentServer, let name = server["name"] as? String {
-                    let transport = server["transport"] as? String ?? "stdio"
+                    let transport = mapVibeTransport(server["transport"] as? String ?? "stdio")
                     servers[name] = MCPServerEntry(
                         type: transport,
                         url: server["url"] as? String,
@@ -515,7 +515,7 @@ actor MCPConfigManager {
             // End of mcp_servers section (new section started)
             if trimmed.hasPrefix("[") && trimmed != "[[mcp_servers]]" {
                 if let server = currentServer, let name = server["name"] as? String {
-                    let transport = server["transport"] as? String ?? "stdio"
+                    let transport = mapVibeTransport(server["transport"] as? String ?? "stdio")
                     servers[name] = MCPServerEntry(
                         type: transport,
                         url: server["url"] as? String,
@@ -556,7 +556,7 @@ actor MCPConfigManager {
 
         // Save last server
         if let server = currentServer, let name = server["name"] as? String {
-            let transport = server["transport"] as? String ?? "stdio"
+            let transport = mapVibeTransport(server["transport"] as? String ?? "stdio")
             servers[name] = MCPServerEntry(
                 type: transport,
                 url: server["url"] as? String,
@@ -567,6 +567,16 @@ actor MCPConfigManager {
         }
 
         return servers
+    }
+
+    /// Map Vibe transport names to internal type names
+    private func mapVibeTransport(_ transport: String) -> String {
+        switch transport {
+        case "streamable-http":
+            return "sse"
+        default:
+            return transport
+        }
     }
 
     /// Parse MCP servers from Codex's TOML config format (named tables)
@@ -672,7 +682,16 @@ actor MCPConfigManager {
     private func generateTOMLMCPServerArray(name: String, config: MCPServerEntry) -> String {
         var lines: [String] = ["[[mcp_servers]]"]
         lines.append("name = \"\(name)\"")
-        lines.append("transport = \"\(config.type)\"")
+
+        // Map internal type to Vibe's transport names
+        let transport: String
+        switch config.type {
+        case "sse":
+            transport = "streamable-http"
+        default:
+            transport = config.type
+        }
+        lines.append("transport = \"\(transport)\"")
 
         if let url = config.url {
             lines.append("url = \"\(url)\"")
