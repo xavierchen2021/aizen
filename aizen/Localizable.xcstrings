@@ -6337,6 +6337,50 @@
         }
       }
     },
+    "sidebar.reportIssue" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Report Issue"
+          }
+        }
+      }
+    },
+    "sidebar.support" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Get Help & Support"
+          }
+        }
+      }
+    },
+    "sidebar.support.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questions, feedback, or issues?\nReach out anytime."
+          }
+        }
+      }
+    },
+    "sidebar.support.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Get in Touch"
+          }
+        }
+      }
+    },
     "sidebar.supportAizen" : {
       "extractionState" : "manual",
       "localizations" : {
