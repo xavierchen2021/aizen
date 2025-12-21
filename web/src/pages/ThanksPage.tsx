@@ -1,21 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { CheckCircle, Mail, Settings, Key, MessageCircle, Download } from "lucide-react";
-import logo from "../logo.png";
+import { fetchLatestVersion } from "../utils/sparkle";
 
 export function ThanksPage() {
   const [downloadUrl, setDownloadUrl] = useState("https://github.com/vivy-company/aizen/releases/latest");
 
   useEffect(() => {
-    fetch("https://r2.aizen.win/appcast.xml")
-      .then((res) => res.text())
-      .then((xmlText) => {
-        const parser = new DOMParser();
-        const xml = parser.parseFromString(xmlText, "text/xml");
-        const enclosure = xml.querySelector("channel > item > enclosure");
-        const url = enclosure?.getAttribute("url");
-        if (url) setDownloadUrl(url);
-      })
-      .catch(() => {});
+    fetchLatestVersion().then((info) => {
+      if (info) setDownloadUrl(info.downloadUrl);
+    });
   }, []);
 
   return (
@@ -24,7 +17,7 @@ export function ThanksPage() {
         {/* Header */}
         <div className="text-center mb-12">
           <div className="relative inline-block mb-6">
-            <img src={logo} alt="Aizen" className="w-24 h-24" />
+            <img src="/logo.png" alt="Aizen" className="w-24 h-24" />
             <div className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full bg-green-500 flex items-center justify-center">
               <CheckCircle size={18} className="text-white" />
             </div>

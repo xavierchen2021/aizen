@@ -1,12 +1,11 @@
 import React from "react";
-import logo from "../logo.png";
 
 export function RefundPage() {
   return (
     <div className="min-h-screen px-6 py-20">
       <div className="max-w-[800px] mx-auto">
         <a href="/" className="inline-block mb-8">
-          <img src={logo} alt="Aizen" className="w-12 h-12" />
+          <img src="/logo.png" alt="Aizen" className="w-12 h-12" />
         </a>
         <h1 className="text-4xl font-semibold tracking-tight mb-2">Refund Policy</h1>
         <p className="text-[#86868b] mb-8">Last updated: {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>

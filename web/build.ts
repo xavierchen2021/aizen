@@ -130,7 +130,6 @@ const result = await Bun.build({
   target: "browser",
   sourcemap: "linked",
   splitting: true,
-  publicPath: "/",
   naming: {
     chunk: "[dir]/[name]-[hash].[ext]",
     entry: "[dir]/[name].[ext]",
@@ -172,6 +171,13 @@ const robots = Bun.file("./src/robots.txt");
 if (await robots.exists()) {
   await Bun.write(path.join(outdir, "robots.txt"), robots);
   console.log(`Copied robots.txt to ${path.join(outdir, "robots.txt")}`);
+}
+
+// Copy logo.png to dist root for absolute path access
+const logo = Bun.file("./src/logo.png");
+if (await logo.exists()) {
+  await Bun.write(path.join(outdir, "logo.png"), logo);
+  console.log(`Copied logo.png to ${path.join(outdir, "logo.png")}`);
 }
 
 console.log(`\nBuild completed in ${buildTime}ms\n`);
