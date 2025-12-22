@@ -527,7 +527,13 @@ class ChatSessionViewModel: ObservableObject {
         session.$isStreaming
             .receive(on: DispatchQueue.main)
             .sink { [weak self] isStreaming in
-                self?.isProcessing = isStreaming
+                guard let self = self else { return }
+                self.isProcessing = isStreaming
+                if !isStreaming {
+                    // Ensure final streamed chunks are reflected in the timeline.
+                    self.syncMessages(session.messages)
+                    self.syncToolCalls(session.toolCalls)
+                }
             }
             .store(in: &cancellables)
 
