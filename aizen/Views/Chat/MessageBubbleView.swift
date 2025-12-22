@@ -75,13 +75,7 @@ struct MessageBubbleView: View {
                             .foregroundStyle(.tertiary)
                             .multilineTextAlignment(.center)
                     } else {
-                        if message.role == .user {
-                            MessageContentView(content: message.content, isComplete: message.isComplete)
-                                .frame(maxWidth: 500, alignment: .leading)
-                                .fixedSize(horizontal: true, vertical: true)
-                        } else {
-                            MessageContentView(content: message.content, isComplete: message.isComplete)
-                        }
+                        MessageContentView(content: message.content, isComplete: message.isComplete)
                     }
 
                     // Only show attachment chips for user messages with non-text attachments
@@ -136,8 +130,8 @@ struct MessageBubbleView: View {
                         }
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 }
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: message.role == .user ? nil : .infinity, alignment: bubbleAlignment)
+                .fixedSize(horizontal: message.role == .system || message.role == .user, vertical: false)
+                .frame(maxWidth: message.role == .user ? 500 : .infinity, alignment: bubbleAlignment)
 
                 if message.role == .agent {
                     Spacer(minLength: 100)
