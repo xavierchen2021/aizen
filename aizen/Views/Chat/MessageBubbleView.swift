@@ -75,7 +75,13 @@ struct MessageBubbleView: View {
                             .foregroundStyle(.tertiary)
                             .multilineTextAlignment(.center)
                     } else {
-                        MessageContentView(content: message.content, isComplete: message.isComplete)
+                        if message.role == .agent {
+                            MessageContentView(content: message.content, isComplete: message.isComplete)
+                                .id(message.content.count)
+                                .transaction { $0.disablesAnimations = true }
+                        } else {
+                            MessageContentView(content: message.content, isComplete: message.isComplete)
+                        }
                     }
 
                     // Only show attachment chips for user messages with non-text attachments
