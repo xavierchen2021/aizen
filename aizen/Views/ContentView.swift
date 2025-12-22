@@ -200,7 +200,10 @@ struct ContentView: View {
 
             if let newWorktree = newValue, !newWorktree.isDeleted {
                 previousWorktree = newWorktree
-                try? repositoryManager.updateWorktreeAccess(newWorktree)
+                // Update worktree access asynchronously to avoid blocking UI
+                Task { @MainActor in
+                    try? repositoryManager.updateWorktreeAccess(newWorktree)
+                }
             } else if newValue?.isDeleted == true {
                 // Worktree was deleted, fall back to primary worktree
                 selectedWorktree = nil

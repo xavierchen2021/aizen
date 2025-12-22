@@ -22,6 +22,7 @@ struct SplitTerminalView: View {
     @State private var paneTitles: [String: String] = [:]
     @State private var layoutSaveWorkItem: DispatchWorkItem?
     @State private var focusSaveWorkItem: DispatchWorkItem?
+    @State private var contextSaveWorkItem: DispatchWorkItem?
     @State private var showCloseConfirmation = false
     @State private var pendingCloseAction: CloseAction = .pane
     @AppStorage("terminalSessionPersistence") private var sessionPersistence = false
@@ -54,15 +55,18 @@ struct SplitTerminalView: View {
         renderNode(layout)
             // Persist layout changes without re-triggering the whole task chain
             .onChange(of: layout) { _ in
+                guard isSelected else { return }
                 scheduleLayoutSave()
             }
             // Persist focused pane changes separately
             .onChange(of: focusedPaneId) { _ in
+                guard isSelected else { return }
                 scheduleFocusSave()
                 applyTitleForFocusedPane()
             }
-            // Initial persistence to store default layout/pane
+            // Initial persistence to store default layout/pane (only for selected session)
             .onAppear {
+                guard isSelected else { return }
                 persistLayout()
                 persistFocus()
                 applyTitleForFocusedPane()
@@ -76,6 +80,7 @@ struct SplitTerminalView: View {
             .onDisappear {
                 layoutSaveWorkItem?.cancel()
                 focusSaveWorkItem?.cancel()
+                contextSaveWorkItem?.cancel()
             }
             .alert(
                 String(localized: "terminal.close.confirmTitle", defaultValue: "Close Terminal?"),
@@ -289,13 +294,23 @@ struct SplitTerminalView: View {
     }
 
     private func saveContext() {
-        guard !session.isDeleted,
-              let context = session.managedObjectContext else { return }
-        do {
-            try context.save()
-        } catch {
-            logger.error("Failed to save split layout: \(error.localizedDescription)")
+        scheduleDebouncedSave()
+    }
+
+    private func scheduleDebouncedSave() {
+        contextSaveWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak session] in
+            guard let session = session,
+                  !session.isDeleted,
+                  let context = session.managedObjectContext else { return }
+            do {
+                try context.save()
+            } catch {
+                Logger.terminal.error("Failed to save split layout: \(error.localizedDescription)")
+            }
         }
+        contextSaveWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
     }
 
     // MARK: - Persistence Helpers
