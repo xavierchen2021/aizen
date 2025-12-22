@@ -112,7 +112,7 @@ struct ChatMessageList: View {
                         case .message(let message):
                             MessageBubbleView(message: message, agentName: message.role == .agent ? selectedAgent : nil)
                                 .id(item.id)
-                                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                                .transition(message.isComplete ? .opacity.combined(with: .scale(scale: 0.95)) : .identity)
                         case .toolCall(let toolCall):
                             // Skip child tool calls (rendered inside parent Task)
                             if toolCall.parentToolCallId != nil {
@@ -128,7 +128,7 @@ struct ChatMessageList: View {
                                     childToolCalls: children
                                 )
                                 .id(item.id)
-                                .transition(.opacity.combined(with: .move(edge: .leading)))
+                                .transition(toolCall.status == .pending ? .opacity.combined(with: .move(edge: .leading)) : .identity)
                             }
                         }
                     }
