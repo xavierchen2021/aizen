@@ -24,20 +24,34 @@ struct InlineDiffView: View {
 
     @AppStorage("terminalFontName") private var terminalFontName = "Menlo"
     @AppStorage("terminalFontSize") private var terminalFontSize = 12.0
-    
+
     @State private var cachedDiffLines: [InlineDiffLine]?
     @State private var isComputing: Bool = false
+    @State private var showFullDiff: Bool = false
+
+    private let previewLineCount = 8
 
     private var fontSize: CGFloat {
         max(terminalFontSize - 2, 9)
     }
-    
+
     private var diffId: String {
         "\(diff.path)-\(diff.oldText?.hashValue ?? 0)-\(diff.newText.hashValue)"
     }
 
     private var diffLines: [InlineDiffLine] {
         cachedDiffLines ?? []
+    }
+
+    private var hasMoreLines: Bool {
+        diffLines.count > previewLineCount
+    }
+
+    private var previewLines: [InlineDiffLine] {
+        if hasMoreLines {
+            return Array(diffLines.prefix(previewLineCount))
+        }
+        return diffLines
     }
 
     var body: some View {
@@ -51,8 +65,8 @@ struct InlineDiffView: View {
             }
             .foregroundStyle(.secondary)
 
-            // Diff content
-            ScrollView {
+            // Diff content - no scroll, just preview lines
+            VStack(alignment: .leading, spacing: 0) {
                 if isComputing {
                     HStack {
                         ProgressView()
@@ -64,22 +78,43 @@ struct InlineDiffView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding()
                 } else {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(diffLines) { line in
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(previewLines) { line in
                             diffLineView(line)
                         }
                     }
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
+
+                    // Show more button
+                    if hasMoreLines {
+                        Button {
+                            showFullDiff = true
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text("···")
+                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                Text("\(diffLines.count - previewLineCount) more lines")
+                                    .font(.system(size: 10))
+                            }
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 4)
+                        }
+                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
+                    }
                 }
             }
-            .frame(maxHeight: 200)
             .padding(8)
             .background(Color(nsColor: .textBackgroundColor))
             .cornerRadius(6)
         }
         .task(id: diffId) {
             await computeDiffAsync()
+        }
+        .sheet(isPresented: $showFullDiff) {
+            FullDiffSheet(diff: diff, diffLines: diffLines, terminalFontName: terminalFontName, fontSize: fontSize)
         }
     }
     
@@ -267,5 +302,90 @@ struct InlineDiffView: View {
         }
 
         return result
+    }
+}
+
+// MARK: - Full Diff Sheet
+
+private struct FullDiffSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let diff: ToolCallDiff
+    let diffLines: [InlineDiffLine]
+    let terminalFontName: String
+    let fontSize: CGFloat
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Diff")
+                        .font(.headline)
+                    Text(diff.path)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Spacer()
+
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+
+            Divider()
+
+            // Full diff content
+            ScrollView([.horizontal, .vertical]) {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(diffLines) { line in
+                        diffLineView(line)
+                    }
+                }
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+            }
+            .background(Color(nsColor: .textBackgroundColor))
+        }
+        .background(.ultraThinMaterial)
+        .frame(minWidth: 600, idealWidth: 800, minHeight: 400, idealHeight: 600)
+    }
+
+    @ViewBuilder
+    private func diffLineView(_ line: InlineDiffLine) -> some View {
+        switch line.type {
+        case .context:
+            Text("  \(line.content)")
+                .font(.custom(terminalFontName, size: fontSize))
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        case .added:
+            Text("+ \(line.content)")
+                .font(.custom(terminalFontName, size: fontSize))
+                .foregroundColor(.green)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.green.opacity(0.1))
+        case .deleted:
+            Text("- \(line.content)")
+                .font(.custom(terminalFontName, size: fontSize))
+                .foregroundColor(.red)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.red.opacity(0.1))
+        case .separator:
+            Text(line.content)
+                .font(.custom(terminalFontName, size: fontSize))
+                .foregroundColor(.cyan)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 2)
+        }
     }
 }

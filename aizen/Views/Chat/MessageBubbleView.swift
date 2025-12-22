@@ -59,87 +59,52 @@ struct MessageBubbleView: View {
                 .padding(.vertical, 4)
             }
 
-            HStack {
-                if message.role == .user {
-                    Spacer(minLength: 100)
+            // User message bubble
+            if message.role == .user {
+                HStack {
+                    Spacer(minLength: 60)
+
+                    UserBubble(
+                        content: message.content,
+                        timestamp: message.timestamp,
+                        contentBlocks: message.contentBlocks,
+                        showCopyConfirmation: showCopyConfirmation,
+                        copyAction: copyMessage,
+                        backgroundView: { backgroundView }
+                    )
                 }
+            }
 
-                if message.role == .system {
-                    Spacer()
-                }
+            // Agent message
+            else if message.role == .agent {
+                HStack {
+                    VStack(alignment: .leading, spacing: 6) {
+                        MessageContentView(content: message.content, isStreaming: !message.isComplete)
 
-                VStack(alignment: message.role == .system ? .center : .leading, spacing: 6) {
-                    if message.role == .system {
-                        Text(message.content)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.tertiary)
-                            .multilineTextAlignment(.center)
-                    } else {
-                        MessageContentView(content: message.content, isStreaming: message.role == .agent && !message.isComplete)
-                    }
-
-                    // Only show attachment chips for user messages with non-text attachments
-                    if message.role == .user, message.contentBlocks.count > 1 {
-                        let attachmentBlocks = message.contentBlocks.dropFirst().filter { block in
-                            // Only show non-text blocks as attachments
-                            if case .text = block { return false }
-                            return true
-                        }
-                        if !attachmentBlocks.isEmpty {
-                            HStack(spacing: 6) {
-                                ForEach(attachmentBlocks.indices, id: \.self) { index in
-                                    AttachmentChipView(block: attachmentBlocks[index])
-                                }
-                            }
-                            .padding(.top, 4)
-                        }
-                    }
-
-                    if message.role != .system {
                         HStack(spacing: 8) {
                             Text(formatTimestamp(message.timestamp))
                                 .font(.system(size: 10))
                                 .foregroundStyle(.tertiary)
 
-                            if message.role == .agent, let executionTime = message.executionTime {
+                            if let executionTime = message.executionTime {
                                 Text(formatExecutionTime(executionTime))
                                     .font(.system(size: 10))
                                     .foregroundStyle(.tertiary)
                             }
-
-                            if message.role == .user {
-                                Spacer()
-
-                                Button(action: copyMessage) {
-                                    Image(systemName: showCopyConfirmation ? "checkmark.circle.fill" : "doc.on.doc")
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(showCopyConfirmation ? .green : .secondary)
-                                }
-                                .buttonStyle(.plain)
-                                .help(String(localized: "chat.message.copy"))
-                            }
                         }
                     }
-                }
-                .if(message.role == .user) { view in
-                    view
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background {
-                            backgroundView
-                        }
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-                .fixedSize(horizontal: message.role == .system, vertical: false)
-                .frame(maxWidth: message.role == .user ? 500 : .infinity, alignment: bubbleAlignment)
 
-                if message.role == .agent {
-                    Spacer(minLength: 100)
+                    Spacer(minLength: 60)
                 }
+            }
 
-                if message.role == .system {
-                    Spacer()
-                }
+            // System message
+            else {
+                Text(message.content)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: true, vertical: false)
             }
         }
         .frame(maxWidth: .infinity, alignment: bubbleAlignment)
@@ -207,6 +172,119 @@ struct MessageBubbleView: View {
         }
     }
 }
+
+// MARK: - User Bubble
+
+private struct BubbleWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+struct UserBubble<Background: View>: View {
+    let content: String
+    let timestamp: Date
+    let contentBlocks: [ContentBlock]
+    let showCopyConfirmation: Bool
+    let copyAction: () -> Void
+    @ViewBuilder let backgroundView: () -> Background
+
+    @State private var measuredWidth: CGFloat?
+
+    private let maxContentWidth: CGFloat = 420
+    private let hPadding: CGFloat = 16
+    private let vPadding: CGFloat = 12
+
+    private var hasImageAttachments: Bool {
+        contentBlocks.contains { block in
+            if case .image = block { return true }
+            return false
+        }
+    }
+
+    var body: some View {
+        bubbleContent
+            .padding(.horizontal, hPadding)
+            .padding(.vertical, vPadding)
+            .frame(width: calculatedBubbleWidth, alignment: .trailing)
+            .background(backgroundView())
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(measureUnwrappedWidth)
+            .contextMenu {
+                Button {
+                    copyAction()
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+            }
+    }
+
+    private var bubbleContent: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            if hasImageAttachments {
+                ForEach(Array(contentBlocks.enumerated()), id: \.offset) { _, block in
+                    if case .image(let imageContent) = block {
+                        ACPImageView(data: imageContent.data, mimeType: imageContent.mimeType)
+                    }
+                }
+            }
+
+            Text(content)
+                .textSelection(.enabled)
+                .multilineTextAlignment(.trailing)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                Text(formatTimestamp(timestamp))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+
+                Button(action: copyAction) {
+                    Image(systemName: showCopyConfirmation ? "checkmark.circle.fill" : "doc.on.doc")
+                        .font(.system(size: 11))
+                        .foregroundStyle(showCopyConfirmation ? .green : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help(String(localized: "chat.message.copy"))
+            }
+        }
+        .frame(maxWidth: maxContentWidth, alignment: .trailing)
+    }
+
+    private var measureUnwrappedWidth: some View {
+        Text(content)
+            .fixedSize()
+            .background(
+                GeometryReader { geo in
+                    Color.clear.preference(key: BubbleWidthKey.self, value: geo.size.width)
+                }
+            )
+            .hidden()
+            .onPreferenceChange(BubbleWidthKey.self) { width in
+                measuredWidth = width
+            }
+    }
+
+    private var calculatedBubbleWidth: CGFloat? {
+        guard let measured = measuredWidth else { return nil }
+        // Minimum width for timestamp (~50pt) + some padding
+        let minContentWidth: CGFloat = 60
+        let contentWidth = min(max(measured, minContentWidth), maxContentWidth)
+        return contentWidth + hPadding * 2
+    }
+
+    private func formatTimestamp(_ date: Date) -> String {
+        userBubbleTimestampFormatter.string(from: date)
+    }
+}
+
+private let userBubbleTimestampFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.timeStyle = .short
+    formatter.dateStyle = .none
+    return formatter
+}()
 
 // MARK: - Agent Badge
 
@@ -354,3 +432,4 @@ struct AgentBadge: View {
     }
     .frame(width: 600, height: 800)
 }
+

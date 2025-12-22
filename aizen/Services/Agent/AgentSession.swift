@@ -87,6 +87,7 @@ class AgentSession: ObservableObject, ACPClientDelegate {
     private var finalizeMessageTask: Task<Void, Never>?
     private var lastAgentChunkAt: Date?
     private static let finalizeIdleDelay: TimeInterval = 0.2
+    private var isModeChanging = false
 
     /// Currently pending Task tool calls (subagents) - used for parent tracking
     /// When only one Task is active, child tool calls are assigned to it
@@ -354,9 +355,15 @@ class AgentSession: ObservableObject, ACPClientDelegate {
 
     /// Set mode by ID
     func setModeById(_ modeId: String) async throws {
+        // Skip if already on this mode or a change is in progress
+        guard modeId != currentModeId, !isModeChanging else { return }
+
         guard let sessionId = sessionId, let client = acpClient else {
             throw AgentSessionError.sessionNotActive
         }
+
+        isModeChanging = true
+        defer { isModeChanging = false }
 
         let response = try await client.setMode(sessionId: sessionId, modeId: modeId)
         if response.success {
