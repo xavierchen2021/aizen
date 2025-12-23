@@ -6,6 +6,50 @@
 import SwiftUI
 import CoreData
 
+// MARK: - Flow Layout
+
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let result = arrange(proposal: proposal, subviews: subviews)
+        return result.size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let result = arrange(proposal: proposal, subviews: subviews)
+        for (index, position) in result.positions.enumerated() {
+            subviews[index].place(at: CGPoint(x: bounds.minX + position.x, y: bounds.minY + position.y), proposal: .unspecified)
+        }
+    }
+
+    private func arrange(proposal: ProposedViewSize, subviews: Subviews) -> (size: CGSize, positions: [CGPoint]) {
+        let maxWidth = proposal.width ?? .infinity
+        var positions: [CGPoint] = []
+        var currentX: CGFloat = 0
+        var currentY: CGFloat = 0
+        var lineHeight: CGFloat = 0
+        var totalHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+
+            if currentX + size.width > maxWidth && currentX > 0 {
+                currentX = 0
+                currentY += lineHeight + spacing
+                lineHeight = 0
+            }
+
+            positions.append(CGPoint(x: currentX, y: currentY))
+            currentX += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+            totalHeight = currentY + lineHeight
+        }
+
+        return (CGSize(width: maxWidth, height: totalHeight), positions)
+    }
+}
+
 struct PostCreateActionsView: View {
     @ObservedObject var repository: Repository
     var showHeader: Bool = true
@@ -284,12 +328,29 @@ struct PostCreateActionEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var selectedType: PostCreateActionType = .copyFiles
-    @State private var patterns: String = ""
+    @State private var selectedFiles: Set<String> = []
+    @State private var customPattern: String = ""
     @State private var command: String = ""
     @State private var workingDirectory: WorkingDirectory = .newWorktree
     @State private var symlinkSource: String = ""
     @State private var symlinkTarget: String = ""
     @State private var customScript: String = ""
+    @State private var detectedFiles: [DetectedFile] = []
+
+    struct DetectedFile: Identifiable, Hashable {
+        let id: String
+        let path: String
+        let name: String
+        let isDirectory: Bool
+        let category: FileCategory
+
+        enum FileCategory: String, CaseIterable {
+            case environment = "Environment"
+            case ideSettings = "IDE Settings"
+            case config = "Configuration"
+            case other = "Other"
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -337,7 +398,7 @@ struct PostCreateActionEditorSheet: View {
             }
             .formStyle(.grouped)
         }
-        .frame(width: 450, height: 350)
+        .frame(width: 480, height: 450)
         .onAppear {
             if let action = action {
                 loadAction(action)
@@ -349,11 +410,7 @@ struct PostCreateActionEditorSheet: View {
     private var configEditorForType: some View {
         switch selectedType {
         case .copyFiles:
-            TextField("Patterns (comma separated)", text: $patterns)
-                .textFieldStyle(.roundedBorder)
-            Text("e.g., .env, .env.local, .vscode/**")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            copyFilesEditor
 
         case .runCommand:
             TextField("Command", text: $command)
@@ -397,10 +454,204 @@ struct PostCreateActionEditorSheet: View {
         }
     }
 
+    // MARK: - Copy Files Editor
+
+    private var copyFilesEditor: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Selected files as chips
+            if !selectedFiles.isEmpty {
+                FlowLayout(spacing: 6) {
+                    ForEach(Array(selectedFiles).sorted(), id: \.self) { file in
+                        HStack(spacing: 4) {
+                            Text(file)
+                                .font(.caption)
+                            Button {
+                                selectedFiles.remove(file)
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 8, weight: .bold))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.accentColor.opacity(0.2))
+                        .clipShape(Capsule())
+                    }
+                }
+            }
+
+            // File browser
+            if !detectedFiles.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(DetectedFile.FileCategory.allCases, id: \.self) { category in
+                        let filesInCategory = detectedFiles.filter { $0.category == category }
+                        if !filesInCategory.isEmpty {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(category.rawValue)
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.secondary)
+
+                                ForEach(filesInCategory) { file in
+                                    fileRow(file)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(8)
+                .background(Color(.controlBackgroundColor).opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else if repositoryPath != nil {
+                HStack {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                    Text("Scanning repository...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            // Custom pattern input
+            HStack {
+                TextField("Add custom pattern", text: $customPattern)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit {
+                        addCustomPattern()
+                    }
+
+                Button {
+                    addCustomPattern()
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.bordered)
+                .disabled(customPattern.isEmpty)
+            }
+
+            Text("e.g., config/*.yml, *.local")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .onAppear {
+            scanRepository()
+        }
+    }
+
+    private func fileRow(_ file: DetectedFile) -> some View {
+        Button {
+            if selectedFiles.contains(file.path) {
+                selectedFiles.remove(file.path)
+            } else {
+                selectedFiles.insert(file.path)
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: selectedFiles.contains(file.path) ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(selectedFiles.contains(file.path) ? Color.accentColor : .secondary)
+
+                Image(systemName: file.isDirectory ? "folder.fill" : "doc.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text(file.name)
+                    .font(.callout)
+
+                Spacer()
+
+                if file.isDirectory {
+                    Text("/**")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func addCustomPattern() {
+        let pattern = customPattern.trimmingCharacters(in: .whitespaces)
+        guard !pattern.isEmpty else { return }
+        selectedFiles.insert(pattern)
+        customPattern = ""
+    }
+
+    private func scanRepository() {
+        guard let repoPath = repositoryPath else { return }
+
+        Task {
+            let files = await detectCopyableFiles(at: repoPath)
+            await MainActor.run {
+                detectedFiles = files
+            }
+        }
+    }
+
+    private func detectCopyableFiles(at path: String) async -> [DetectedFile] {
+        let fm = FileManager.default
+        var result: [DetectedFile] = []
+
+        // Common patterns to look for
+        let patterns: [(String, DetectedFile.FileCategory, Bool)] = [
+            // Environment files
+            (".env", .environment, false),
+            (".env.local", .environment, false),
+            (".env.development", .environment, false),
+            (".env.development.local", .environment, false),
+            (".env.production.local", .environment, false),
+            // IDE settings
+            (".vscode", .ideSettings, true),
+            (".idea", .ideSettings, true),
+            // Config files
+            ("config/local.yml", .config, false),
+            ("config/local.json", .config, false),
+            ("config/local.py", .config, false),
+            (".npmrc", .config, false),
+            (".yarnrc", .config, false),
+            ("local.settings.json", .config, false),
+        ]
+
+        for (pattern, category, isDir) in patterns {
+            let fullPath = (path as NSString).appendingPathComponent(pattern)
+            var isDirectory: ObjCBool = false
+
+            if fm.fileExists(atPath: fullPath, isDirectory: &isDirectory) {
+                if isDir == isDirectory.boolValue {
+                    result.append(DetectedFile(
+                        id: pattern,
+                        path: isDir ? "\(pattern)/**" : pattern,
+                        name: pattern,
+                        isDirectory: isDir,
+                        category: category
+                    ))
+                }
+            }
+        }
+
+        // Also scan for any .env* files
+        if let contents = try? fm.contentsOfDirectory(atPath: path) {
+            for item in contents {
+                if item.hasPrefix(".env") && !result.contains(where: { $0.name == item }) {
+                    result.append(DetectedFile(
+                        id: item,
+                        path: item,
+                        name: item,
+                        isDirectory: false,
+                        category: .environment
+                    ))
+                }
+            }
+        }
+
+        return result.sorted { $0.category.rawValue < $1.category.rawValue }
+    }
+
     private var isValid: Bool {
         switch selectedType {
         case .copyFiles:
-            return !patterns.trimmingCharacters(in: .whitespaces).isEmpty
+            return !selectedFiles.isEmpty
         case .runCommand:
             return !command.trimmingCharacters(in: .whitespaces).isEmpty
         case .symlink:
@@ -446,7 +697,7 @@ struct PostCreateActionEditorSheet: View {
         selectedType = action.type
         switch action.config {
         case .copyFiles(let config):
-            patterns = config.patterns.joined(separator: ", ")
+            selectedFiles = Set(config.patterns)
         case .runCommand(let config):
             command = config.command
             workingDirectory = config.workingDirectory
@@ -462,8 +713,7 @@ struct PostCreateActionEditorSheet: View {
         let config: ActionConfig
         switch selectedType {
         case .copyFiles:
-            let patternList = patterns.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-            config = .copyFiles(CopyFilesConfig(patterns: patternList))
+            config = .copyFiles(CopyFilesConfig(patterns: Array(selectedFiles).sorted()))
         case .runCommand:
             config = .runCommand(RunCommandConfig(command: command, workingDirectory: workingDirectory))
         case .symlink:
