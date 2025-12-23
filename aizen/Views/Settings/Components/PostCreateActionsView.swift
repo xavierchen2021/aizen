@@ -625,8 +625,24 @@ struct PostCreateActionEditorSheet: View {
     }
 
     private func addCustomPattern() {
-        let pattern = customPattern.trimmingCharacters(in: .whitespaces)
+        var pattern = customPattern.trimmingCharacters(in: .whitespaces)
         guard !pattern.isEmpty else { return }
+
+        // Convert absolute path to relative if it's inside the repo
+        if pattern.hasPrefix("/"), let repoPath = repositoryPath {
+            let repoPathWithSlash = repoPath.hasSuffix("/") ? repoPath : repoPath + "/"
+            if pattern.hasPrefix(repoPathWithSlash) {
+                pattern = String(pattern.dropFirst(repoPathWithSlash.count))
+            } else if pattern.hasPrefix(repoPath) {
+                pattern = String(pattern.dropFirst(repoPath.count + 1))
+            }
+        }
+
+        // Remove leading slash if still present
+        if pattern.hasPrefix("/") {
+            pattern = String(pattern.dropFirst())
+        }
+
         selectedFiles.insert(pattern)
         customPattern = ""
     }
