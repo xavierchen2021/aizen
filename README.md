@@ -6,6 +6,8 @@
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/eKW7GNesuS)
 [![Twitter](https://img.shields.io/badge/Twitter-@aizenwin-1DA1F2?logo=x&logoColor=white)](https://x.com/aizenwin)
 
+> **Early Access** — Aizen is under active development with near-daily updates. Expect breaking changes and new features frequently.
+
 Bring order to your repos. Switch worktrees, not windows.
 
 ![Aizen Demo](https://r2.aizen.win/demo.png)

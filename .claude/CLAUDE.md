@@ -2,49 +2,95 @@
 
 ## Project Overview
 
-Aizen is a macOS developer tool for managing Git worktrees with integrated terminal and AI agent support via the Agent Client Protocol (ACP).
+Aizen is a macOS developer tool for managing Git worktrees with integrated terminal, file browser, web browser, and AI agent support via the Agent Client Protocol (ACP).
 
 ## Architecture
 
 ### Domain Organization
 
-The codebase is organized by domain:
-- **App/**: Application entry point
-- **Models/**: Data models and protocol types
-- **Services/**: Business logic (Agent, Git, Persistence)
-- **Views/**: SwiftUI views organized by feature (Chat, Terminal, Workspace, Worktree, Settings)
-- **Managers/**: State managers
-- **Utilities/**: Helper functions
+```
+aizen/
+├── App/                    # Application entry point
+├── Models/                 # Data models and protocol types (17 domains)
+│   ├── ACP/                # ACP protocol types (11 files)
+│   ├── Agent/              # Agent metadata and config
+│   ├── Chat/               # Chat attachments
+│   ├── Git/                # Git models (diff, merge, branch templates)
+│   ├── MCP/                # Model Context Protocol types
+│   ├── Tab/                # Tab state types
+│   └── Terminal/           # Terminal preset config
+├── Services/               # Business logic (17 service domains)
+│   ├── Agent/              # ACP client, session, installers, delegates
+│   ├── Git/                # Repository, libgit2, domain services
+│   ├── Audio/              # Voice recording and speech recognition
+│   ├── Highlighting/       # Tree-sitter syntax highlighting
+│   ├── License/            # License management
+│   ├── MCP/                # MCP server management
+│   ├── Workflow/           # GitHub/GitLab CI/CD integration
+│   └── Xcode/              # Xcode build and device management
+├── Views/                  # SwiftUI views (18+ feature folders)
+│   ├── Chat/               # Chat interface (18 files + 30 components)
+│   ├── Worktree/           # Worktree management (12 files + 60 components)
+│   ├── Terminal/           # Terminal views and split panes
+│   ├── Files/              # File browser
+│   ├── Browser/            # Web browser tabs
+│   ├── Settings/           # Settings UI (8 primary + 15 components)
+│   ├── Search/             # File search
+│   └── CommandPalette/     # Spotlight-like command palette
+├── GhosttyTerminal/        # GPU-accelerated terminal (15 files)
+├── Managers/               # State managers (10 files)
+├── Utilities/              # Helper functions (18 files)
+├── Assets.xcassets/        # Icons and images
+└── Resources/              # Shell integration, themes, terminfo
+```
 
 ### Design Patterns
 
-- **MVVM**: Views observe `@ObservableObject` models (e.g., `AgentSession`, `RepositoryManager`)
-- **Actor Model**: Thread-safe services (`ACPClient`, `GitService`, `AgentInstaller`)
-- **Core Data**: Persistent entities (Workspace, Repository, Worktree, ChatSession)
-- **Modern Concurrency**: async/await throughout
+- **MVVM**: Views observe `@ObservableObject` models (e.g., `AgentSession`, `ChatSessionViewModel`)
+- **Actor Model**: Thread-safe services (`ACPClient`, `Libgit2Service`, `XcodeBuildService`)
+- **Delegation**: Request handling (`AgentFileSystemDelegate`, `AgentTerminalDelegate`, `AgentPermissionHandler`)
+- **Domain Services**: Git operations split by domain (`GitStatusService`, `GitBranchService`, etc.)
+- **Core Data**: 10 persistent entities with relationships
+- **Modern Concurrency**: async/await, AsyncStream throughout
 
 ### Key Components
 
 **Agent Client Protocol (ACP)**:
-- `ACPClient` (actor): Manages subprocess communication with agents
+- `ACPClient` (actor): Subprocess manager with JSON-RPC 2.0
+- `ACPProcessManager`: Process lifecycle management
+- `ACPRequestRouter`: Request/response routing
 - `AgentSession` (@MainActor): Observable session state wrapper
-- `ACPTypes`: JSON-RPC 2.0 protocol definitions
+- `AgentInstaller`: NPM, GitHub, Binary, UV installation methods
 - Supports Claude, Codex (OpenAI), and Gemini
 
 **Git Operations**:
-- `GitService` (actor): Executes git commands
-- `RepositoryManager`: CRUD for repositories and worktrees
-
-**Chat Interface**:
-- `ChatTabView`: Tab management
-- `ChatSessionView`: Full session UI (messages, input, controls)
-- `MessageBubbleView`: Individual message rendering
-- `Components/`: Reusable chat components (markdown, code blocks, input)
+- `RepositoryManager`: CRUD for workspaces, repos, worktrees
+- `Libgit2Service`: Native libgit2 wrapper for git operations
+- Domain services: `GitStatusService`, `GitBranchService`, `GitWorktreeService`, `GitDiffService`, etc.
+- `GitDiffProvider` + `GitDiffCache`: Diff fetching with caching
+- `ReviewSessionManager`: Code review sessions
 
 **Terminal Integration**:
-- SwiftTerm-based terminal emulator
+- `GhosttyTerminalView`: GPU-accelerated terminal with Metal rendering
 - Split pane support via `TerminalSplitLayout`
-- Terminal creation/management delegated through `AgentSession`
+- Terminal presets and session management
+- Shell integration with Ghostty resources
+
+**Chat Interface**:
+- `ChatSessionView` + `ChatSessionViewModel`: Full session UI
+- `MessageBubbleView`: Message rendering with markdown, code blocks
+- `ToolCallView` + `ToolCallGroupView`: Tool call visualization
+- Voice input with waveform visualization
+- File attachments and inline diffs
+
+**File Browser**:
+- `FileBrowserSessionView`: Tree view with file operations
+- `FileContentView`: File content display with syntax highlighting
+
+**CI/CD Integration**:
+- `WorkflowSidebarView`: GitHub Actions / GitLab CI display
+- `WorkflowRunDetailView`: Run details and logs
+- `XcodeBuildManager`: Xcode build integration
 
 ## Development Guidelines
 
@@ -52,8 +98,9 @@ The codebase is organized by domain:
 
 1. **Respect domain boundaries**:
    - Agent logic → `Services/Agent/`
-   - Git operations → `Services/Git/`
+   - Git operations → `Services/Git/` (use domain services)
    - UI components → `Views/{feature}/`
+   - Terminal → `GhosttyTerminal/`
 
 2. **Keep files focused**:
    - Extract large views into components
@@ -64,45 +111,28 @@ The codebase is organized by domain:
    - Actors for concurrent operations
    - @MainActor for UI state
    - async/await over completion handlers
-   - Combine for reactive streams
-
-4. **Follow SwiftUI best practices**:
-   - Minimize `useEffect`-style logic (use declarative state)
-   - Extract complex views into subviews
-   - Use `@FetchRequest` for Core Data
-   - Prefer composition over inheritance
+   - AsyncStream for event streaming
 
 ### File Organization Rules
 
 - Place new agent-related code in `Services/Agent/`
-- Place new Git functionality in `Services/Git/`
-- Create new view folders when adding major features (e.g., `Views/Search/`)
+- Place new Git functionality in `Services/Git/Domain/`
+- Create new view folders when adding major features
 - Extract components to `Components/` subfolder when reused 3+ times
 - Keep utilities generic in `Utilities/`
-
-### Testing
-
-- Services expose clean interfaces for mocking
-- Actors can be tested with `@MainActor` or Task contexts
-- Use Core Data preview context for view testing
 
 ### Protocol Communication
 
 **ACP Flow**:
 1. User input → `ChatSessionView`
-2. → `AgentSession.sendMessage(_:)`
-3. → `ACPClient.sendRequest(_:)`
-4. → Subprocess (agent binary)
-5. ← JSON-RPC notifications (streamed)
-6. → `ACPClient` delegates to `AgentSession`
-7. → Published state updates
-8. → SwiftUI view refreshes
-
-**File Operations**:
-- Agent requests file read → `ACPClient` delegates → `AgentSession` → FileHandle
-
-**Terminal Operations**:
-- Agent requests terminal → `ACPClient` delegates → `AgentSession` → Process spawn
+2. → `ChatSessionViewModel.sendMessage(_:)`
+3. → `AgentSession.sendMessage(_:)`
+4. → `ACPClient.sendRequest(_:)`
+5. → Subprocess (agent binary)
+6. ← JSON-RPC notifications (streamed)
+7. → Delegates (`AgentFileSystemDelegate`, `AgentTerminalDelegate`)
+8. → Published state updates
+9. → SwiftUI view refreshes
 
 ### Common Tasks
 
@@ -110,61 +140,43 @@ The codebase is organized by domain:
 1. Update `AgentRegistry.swift` with agent config
 2. Add icon to `Assets.xcassets/AgentIcons.xcassetcatalog/`
 3. Update `AgentIconView.swift` for icon mapping
-4. Add installation logic to `AgentInstaller.swift` if needed
+4. Add installer in `Services/Agent/Installers/` if needed
 
-**Add new view feature**:
-1. Create folder in `Views/{Feature}/`
-2. Add main view file
-3. Extract components to `Components/` if complex
-4. Update `ContentView.swift` or appropriate parent for navigation
+**Add new Git domain operation**:
+1. Create service in `Services/Git/Domain/` (e.g., `GitNewFeatureService.swift`)
+2. Add methods following existing patterns
+3. Integrate with `Libgit2Service` or shell commands as needed
 
 **Modify ACP protocol**:
-1. Update `ACPTypes.swift` with new types
-2. Handle in `ACPClient.handleNotification(_:)` or `handleRequest(_:)`
-3. Update `AgentSession` delegate methods if needed
+1. Update types in `Models/ACP/` (split across multiple files)
+2. Handle in `ACPClient` or appropriate delegate
+3. Update `AgentSession` if state changes needed
 4. Update UI in relevant view
 
 ### Dependencies
 
-- **SwiftTerm**: Terminal emulator (no custom modifications)
+- **libghostty**: GPU-accelerated terminal with Metal
+- **libgit2**: Native git operations
 - **swift-markdown**: Markdown parsing (Apple official)
-- **HighlightSwift**: Syntax highlighting (wrapper around highlight.js)
+- **HighlightSwift**: Syntax highlighting (highlight.js wrapper)
+- **CodeEdit packages**: Tree-sitter syntax highlighting
+- **Sparkle**: Auto-update framework
 
 ### Build Notes
 
-- Minimum: macOS 26.0+
+- Minimum: macOS 13.5+
 - Xcode 16.0+
 - Swift 5.0+
 - All file paths must be absolute in tool operations
 - Use git mv for file moves to preserve history
+- Deep linking via `aizen://` URL scheme
 
-### Important Patterns to Follow
+## Core Data Schema
 
-**Observable State**:
-```swift
-@MainActor
-class AgentSession: ObservableObject {
-    @Published var messages: [MessageItem] = []
-    // ...
-}
-```
-
-**Actor Services**:
-```swift
-actor GitService {
-    func listWorktrees(at path: String) async throws -> [WorktreeInfo] {
-        // Thread-safe operations
-    }
-}
-```
-
-**Core Data Integration**:
-```swift
-@FetchRequest(
-    sortDescriptors: [NSSortDescriptor(keyPath: \Workspace.order, ascending: true)]
-)
-private var workspaces: FetchedResults<Workspace>
-```
+**Entities**:
+- `Workspace` → Many `Repository` → Many `Worktree`
+- `Worktree` → `TerminalSession`, `ChatSession`, `FileBrowserSession`, `BrowserSession`
+- `ChatSession` → Many `ChatMessage` → Many `ToolCallRecord`
 
 ## Code Style
 
@@ -186,12 +198,13 @@ private var workspaces: FetchedResults<Workspace>
 - Check console logs for subprocess stderr
 
 **Terminal not displaying**:
-- SwiftTerm requires proper frame size
-- Check terminal theme configuration
+- GhosttyTerminal requires proper frame size and Metal support
+- Check terminal theme configuration in Resources/
 - Verify process spawn permissions
 
 ## Resources
 
 - [Agent Client Protocol Spec](https://agentclientprotocol.com)
-- [SwiftTerm Docs](https://github.com/migueldeicaza/SwiftTerm)
+- [Ghostty Terminal](https://github.com/ghostty-org/ghostty)
 - [swift-markdown](https://github.com/apple/swift-markdown)
+- [libgit2](https://libgit2.org/)
