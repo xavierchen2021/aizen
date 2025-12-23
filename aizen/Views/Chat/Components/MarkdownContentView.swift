@@ -66,6 +66,7 @@ struct MarkdownRenderedView: View {
         parseTask?.cancel()
 
         let contentSnapshot = content
+        let capturedHash = contentHash
         parseTask = Task { @MainActor in
             // Debounce rapid streaming updates
             try? await Task.sleep(nanoseconds: 40_000_000)
@@ -77,12 +78,12 @@ struct MarkdownRenderedView: View {
             }.value
 
             guard !Task.isCancelled else { return }
-            if pendingContentHash == contentHash {
+            // Use captured hash for comparison since view struct may be recreated during async work
+            // The hash uniquely identifies the content, so string comparison is redundant
+            cachedBlocks = blocks
+            cachedContentHash = capturedHash
+            if pendingContentHash == capturedHash {
                 pendingContentHash = 0
-            }
-            if contentSnapshot == content {
-                cachedBlocks = blocks
-                cachedContentHash = contentHash
             }
         }
     }
@@ -93,17 +94,18 @@ struct MarkdownRenderedView: View {
         parseTask?.cancel()
 
         let contentSnapshot = content
+        let capturedHash = contentHash
         parseTask = Task { @MainActor in
             let blocks = await Task.detached(priority: .userInitiated) {
                 let document = Document(parsing: contentSnapshot)
                 return Self.convertMarkdown(document)
             }.value
 
-            if contentSnapshot == content {
-                cachedBlocks = blocks
-                cachedContentHash = contentHash
-                pendingContentHash = 0
-            }
+            guard !Task.isCancelled else { return }
+            // Use captured hash since view struct may be recreated during async work
+            cachedBlocks = blocks
+            cachedContentHash = capturedHash
+            pendingContentHash = 0
         }
     }
 
