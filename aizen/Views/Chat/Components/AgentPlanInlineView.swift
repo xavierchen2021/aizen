@@ -1,98 +1,165 @@
-//
 //  AgentPlanInlineView.swift
 //  aizen
 //
-//  Inline view for displaying agent plan above input bar
+//  Compact chip view for displaying agent plan progress
 //
 
 import SwiftUI
 
 struct AgentPlanInlineView: View {
     let plan: Plan
-    @State private var isCollapsed: Bool = false
+    @State private var showingSheet = false
+
+    private var completedCount: Int {
+        plan.entries.filter { $0.status == .completed }.count
+    }
+
+    private var totalCount: Int {
+        plan.entries.count
+    }
+
+    private var isAllDone: Bool {
+        completedCount == totalCount
+    }
+
+    private var currentEntry: PlanEntry? {
+        plan.entries.first { $0.status == .inProgress }
+            ?? plan.entries.first { $0.status == .pending }
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Header with collapse toggle
+        if !isAllDone {
+            Button {
+                showingSheet = true
+            } label: {
+                HStack(spacing: 6) {
+                    // Animated dot indicator
+                    Circle()
+                        .fill(currentEntry?.status == .inProgress ? Color.blue : Color.secondary)
+                        .frame(width: 6, height: 6)
+                        .overlay {
+                            if currentEntry?.status == .inProgress {
+                                Circle()
+                                    .stroke(Color.blue.opacity(0.4), lineWidth: 2)
+                                    .scaleEffect(1.5)
+                            }
+                        }
+
+                    // Current task text
+                    if let entry = currentEntry {
+                        Text(entry.activeForm ?? entry.content)
+                            .font(.system(size: 11))
+                            .lineLimit(1)
+                    }
+
+                    // Progress counter
+                    Text("\(completedCount)/\(totalCount)")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.quaternary, in: Capsule())
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(.ultraThinMaterial, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .sheet(isPresented: $showingSheet) {
+                AgentPlanSheet(plan: plan)
+            }
+        }
+    }
+}
+
+struct AgentPlanSheet: View {
+    let plan: Plan
+    @Environment(\.dismiss) private var dismiss
+
+    private var completedCount: Int {
+        plan.entries.filter { $0.status == .completed }.count
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header
             HStack {
-                Image(systemName: "list.bullet.clipboard")
-                    .font(.system(size: 11))
                 Text("Agent Plan")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.headline)
 
                 Spacer()
 
-                // Progress indicator
-                Text(progressText)
-                    .font(.system(size: 10))
+                Text("\(completedCount)/\(plan.entries.count) completed")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
 
                 Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isCollapsed.toggle()
-                    }
+                    dismiss()
                 } label: {
-                    Image(systemName: isCollapsed ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 10, weight: .medium))
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
             }
-            .foregroundStyle(.secondary)
+            .padding()
 
-            if !isCollapsed {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(Array(plan.entries.enumerated()), id: \.offset) { _, entry in
-                            PlanEntryRow(entry: entry)
-                        }
+            Divider()
+
+            // Plan entries
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(plan.entries.enumerated()), id: \.offset) { index, entry in
+                        PlanEntryRow(entry: entry, index: index + 1)
                     }
                 }
-                .frame(maxHeight: 200)
+                .padding()
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
-    }
-
-    private var progressText: String {
-        let completed = plan.entries.filter { $0.status == .completed }.count
-        return "\(completed)/\(plan.entries.count)"
+        .frame(width: 400, height: 300)
     }
 }
 
 struct PlanEntryRow: View {
     let entry: PlanEntry
+    var index: Int = 0
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 6, height: 6)
-                .padding(.top, 4)
+        HStack(alignment: .top, spacing: 10) {
+            // Status icon
+            Group {
+                switch entry.status {
+                case .completed:
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                case .inProgress:
+                    Image(systemName: "circle.dotted")
+                        .foregroundStyle(.blue)
+                case .pending:
+                    Image(systemName: "circle")
+                        .foregroundStyle(.secondary)
+                case .cancelled:
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.red)
+                }
+            }
+            .font(.system(size: 14))
+            .frame(width: 16)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.content)
-                    .font(.system(size: 12))
+                    .font(.system(size: 13))
                     .foregroundStyle(entry.status == .completed ? .secondary : .primary)
                     .strikethrough(entry.status == .completed)
 
                 if let activeForm = entry.activeForm, entry.status == .inProgress {
                     Text(activeForm)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.blue)
                         .italic()
                 }
             }
         }
-    }
-
-    private var statusColor: Color {
-        switch entry.status {
-        case .pending: return .secondary
-        case .inProgress: return .blue
-        case .completed: return .green
-        case .cancelled: return .red
-        }
+        .padding(.vertical, 4)
     }
 }

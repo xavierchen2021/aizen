@@ -145,6 +145,7 @@ struct ChatMessageList: View {
                                 summary: summary,
                                 onOpenInEditor: onOpenFileInEditor
                             )
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .id(item.id)
                             .transition(.opacity)
                         }
