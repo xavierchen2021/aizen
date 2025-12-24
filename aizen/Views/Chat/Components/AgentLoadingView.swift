@@ -16,16 +16,16 @@ struct AgentLoadingView: View {
     @State private var tipOpacity: Double = 1.0
 
     private let tips = [
-        "Warming up the neural pathways...",
-        "Preparing your coding companion...",
-        "Loading context and capabilities...",
-        "Tip: Use @ to mention files or folders",
-        "Tip: Press ⌘+K to toggle modes",
-        "Tip: Drag files into chat to attach them",
-        "Tip: Use /help to see available commands",
-        "Connecting to the AI backend...",
-        "Almost ready to assist you...",
-        "Initializing development environment...",
+        "⌘D to split terminal right, ⇧⌘D to split down",
+        "⇧⌘A to switch between active worktrees",
+        "⇧⌘Z to toggle Zen Mode for distraction-free coding",
+        "Type @ to mention files or folders in chat",
+        "Drag files into the chat to attach them",
+        "Use / to access slash commands",
+        "Each worktree has its own terminal, chat, and browser",
+        "Right-click files to send them to the agent",
+        "Git worktrees let you work on multiple branches at once",
+        "⌘P to open command palette for quick navigation",
     ]
 
     private let tipRotationTimer = Timer.publish(every: 3, on: .main, in: .common).autoconnect()

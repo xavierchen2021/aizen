@@ -37,18 +37,7 @@ class AgentPermissionHandler: ObservableObject {
 
     // MARK: - Initialization
 
-    init() {
-        // Register for notification responses from PermissionNotificationManager
-        setupNotificationResponseHandler()
-    }
-
-    private func setupNotificationResponseHandler() {
-        PermissionNotificationManager.shared.onPermissionResponse = { [weak self] sessionId, optionId in
-            guard let self = self,
-                  self.chatSessionId == sessionId else { return }
-            self.respondToPermission(optionId: optionId)
-        }
-    }
+    init() {}
 
     // MARK: - Permission Handling
 

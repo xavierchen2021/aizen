@@ -33,8 +33,13 @@ final class PermissionNotificationManager: NSObject, UNUserNotificationCenterDel
     /// Pending permission info keyed by notification identifier
     private var pendingNotifications: [String: PermissionNotificationInfo] = [:]
 
-    /// Callback to respond to permission - set by AgentPermissionHandler
-    var onPermissionResponse: ((UUID, String) -> Void)?
+    /// Routes permission response to the correct handler via ChatSessionManager
+    private func respondToPermission(chatSessionId: UUID, optionId: String) {
+        guard let agentSession = ChatSessionManager.shared.getAgentSession(for: chatSessionId) else {
+            return
+        }
+        agentSession.permissionHandler.respondToPermission(optionId: optionId)
+    }
 
     private override init() {
         super.init()
@@ -163,29 +168,28 @@ final class PermissionNotificationManager: NSObject, UNUserNotificationCenterDel
         chatSessionId: UUID,
         notificationId: String
     ) {
-        // Bring app to front
-        NSApp.activate(ignoringOtherApps: true)
-
         let info = pendingNotifications[notificationId]
 
         switch actionIdentifier {
         case "ALLOW":
-            // Find first allow option
+            // Find first allow option and respond directly
             if let allowOption = info?.options.first(where: { $0.kind == "allow" }) {
-                onPermissionResponse?(chatSessionId, allowOption.optionId)
+                respondToPermission(chatSessionId: chatSessionId, optionId: allowOption.optionId)
             } else {
-                // Fallback - navigate to chat
+                // Fallback - bring app to front and navigate
+                NSApp.activate(ignoringOtherApps: true)
                 postNavigationNotification(chatSessionId: chatSessionId)
             }
 
         case "DENY":
-            // Find first deny option
+            // Find first deny option and respond directly
             if let denyOption = info?.options.first(where: { $0.kind == "deny" }) {
-                onPermissionResponse?(chatSessionId, denyOption.optionId)
+                respondToPermission(chatSessionId: chatSessionId, optionId: denyOption.optionId)
             }
 
         case "VIEW", UNNotificationDefaultActionIdentifier:
-            // User clicked the notification - navigate to chat
+            // User clicked the notification - bring app to front and navigate to chat
+            NSApp.activate(ignoringOtherApps: true)
             postNavigationNotification(chatSessionId: chatSessionId)
 
         default:

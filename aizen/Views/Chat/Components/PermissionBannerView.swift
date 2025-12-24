@@ -2,7 +2,7 @@
 //  PermissionBannerView.swift
 //  aizen
 //
-//  Floating banner shown when permission is pending in a different chat session.
+//  Glass toast notification for pending permission requests in other sessions.
 //
 
 import SwiftUI
@@ -14,20 +14,19 @@ struct PermissionBannerView: View {
 
     @ObservedObject private var chatSessionManager = ChatSessionManager.shared
     @Environment(\.managedObjectContext) private var viewContext
+    @Environment(\.colorScheme) private var colorScheme
 
-    private var pendingSessionInfo: (sessionId: UUID, worktreeName: String)? {
-        // Find first pending permission that isn't the current session
+    private var pendingSessionInfo: (sessionId: UUID, worktreeName: String, message: String?)? {
         for sessionId in chatSessionManager.sessionsWithPendingPermissions {
             if sessionId != currentChatSessionId {
-                // Look up worktree name
-                let worktreeName = fetchWorktreeName(for: sessionId)
-                return (sessionId, worktreeName)
+                let (worktreeName, message) = fetchSessionInfo(for: sessionId)
+                return (sessionId, worktreeName, message)
             }
         }
         return nil
     }
 
-    private func fetchWorktreeName(for chatSessionId: UUID) -> String {
+    private func fetchSessionInfo(for chatSessionId: UUID) -> (worktreeName: String, message: String?) {
         let request: NSFetchRequest<ChatSession> = ChatSession.fetchRequest()
         request.predicate = NSPredicate(format: "id == %@", chatSessionId as CVarArg)
         request.fetchLimit = 1
@@ -35,44 +34,104 @@ struct PermissionBannerView: View {
         do {
             if let session = try viewContext.fetch(request).first,
                let worktree = session.worktree {
-                return worktree.branch ?? "Chat"
+                let name = worktree.branch ?? "Chat"
+                // Get permission message from agent session
+                let agentSession = ChatSessionManager.shared.getAgentSession(for: chatSessionId)
+                let message = agentSession?.permissionHandler.permissionRequest?.message
+                return (name, message)
             }
-        } catch {
-            // Ignore fetch errors
-        }
-        return "Chat"
+        } catch {}
+        return ("Chat", nil)
     }
 
     var body: some View {
         if let info = pendingSessionInfo {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.shield.fill")
-                    .foregroundStyle(.orange)
-
-                Text("permission.banner.message \(info.worktreeName)")
-                    .font(.system(size: 12, weight: .medium))
-
-                Spacer()
-
-                Button {
-                    onNavigate(info.sessionId)
-                } label: {
-                    Text("permission.banner.view")
-                        .font(.system(size: 11, weight: .semibold))
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(.ultraThinMaterial)
-            .background(Color.orange.opacity(0.1))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .transition(.move(edge: .top).combined(with: .opacity))
-            .animation(.spring(response: 0.3), value: info.sessionId)
+            bannerContent(info: info)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: info.sessionId)
+                .padding(.top, 12)
         }
+    }
+
+    @ViewBuilder
+    private func bannerContent(info: (sessionId: UUID, worktreeName: String, message: String?)) -> some View {
+        Button {
+            onNavigate(info.sessionId)
+        } label: {
+            HStack(spacing: 10) {
+                // Pulsing indicator
+                Circle()
+                    .fill(.orange)
+                    .frame(width: 8, height: 8)
+                    .overlay {
+                        Circle()
+                            .stroke(.orange.opacity(0.5), lineWidth: 2)
+                            .scaleEffect(1.5)
+                    }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("permission.banner.title \(info.worktreeName)")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.primary)
+
+                    if let message = info.message, !message.isEmpty {
+                        Text(message)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: 380)
+            .background { glassBackground }
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(strokeColor, lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.4 : 0.15), radius: 20, y: 8)
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var glassBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        if #available(macOS 26.0, *) {
+            ZStack {
+                GlassEffectContainer {
+                    shape
+                        .fill(.white.opacity(0.001))
+                        .glassEffect(.regular.tint(tintColor), in: shape)
+                }
+                .allowsHitTesting(false)
+
+                shape
+                    .fill(scrimColor)
+                    .allowsHitTesting(false)
+            }
+        } else {
+            shape.fill(.ultraThinMaterial)
+        }
+    }
+
+    private var tintColor: Color {
+        colorScheme == .dark ? .black.opacity(0.22) : .white.opacity(0.6)
+    }
+
+    private var strokeColor: Color {
+        colorScheme == .dark ? .white.opacity(0.14) : .black.opacity(0.08)
+    }
+
+    private var scrimColor: Color {
+        colorScheme == .dark ? .black.opacity(0.12) : .white.opacity(0.06)
     }
 }

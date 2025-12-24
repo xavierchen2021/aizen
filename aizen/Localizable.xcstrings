@@ -2087,24 +2087,13 @@
         }
       }
     },
-    "permission.banner.message %@" : {
+    "permission.banner.title %@" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Permission requested in %@"
-          }
-        }
-      }
-    },
-    "permission.banner.view" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "View"
           }
         }
       }
