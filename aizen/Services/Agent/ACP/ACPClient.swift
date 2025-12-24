@@ -184,7 +184,8 @@ actor ACPClient {
             prompt: content
         )
 
-        let response = try await sendRequest(method: "session/prompt", params: request)
+        // No timeout for prompts - agent can run for hours
+        let response = try await sendRequest(method: "session/prompt", params: request, timeout: nil)
 
         if let error = response.error {
             throw ACPClientError.agentError(error)
@@ -310,7 +311,7 @@ actor ACPClient {
     func sendRequest<T: Encodable>(
         method: String,
         params: T,
-        timeout: TimeInterval = 120.0
+        timeout: TimeInterval? = 120.0
     ) async throws -> JSONRPCResponse {
         guard await processManager.isRunning() else {
             throw ACPClientError.processNotRunning
@@ -344,10 +345,15 @@ actor ACPClient {
     }
 
     private func withRequestTimeout<T>(
-        seconds: TimeInterval,
+        seconds: TimeInterval?,
         requestId: RequestId,
         operation: @escaping () async throws -> T
     ) async throws -> T {
+        // No timeout - just run the operation directly
+        guard let seconds = seconds else {
+            return try await operation()
+        }
+
         do {
             return try await withThrowingTaskGroup(of: T.self) { group in
                 group.addTask {
