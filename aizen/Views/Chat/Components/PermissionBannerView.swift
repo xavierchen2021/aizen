@@ -2,7 +2,7 @@
 //  PermissionBannerView.swift
 //  aizen
 //
-//  Glass toast notification for pending permission requests in other sessions.
+//  Glass toast notification for pending permission requests with inline actions.
 //
 
 import SwiftUI
@@ -16,32 +16,38 @@ struct PermissionBannerView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @Environment(\.colorScheme) private var colorScheme
 
-    private var pendingSessionInfo: (sessionId: UUID, worktreeName: String, message: String?)? {
+    private var pendingSessionInfo: PendingPermissionInfo? {
         for sessionId in chatSessionManager.sessionsWithPendingPermissions {
             if sessionId != currentChatSessionId {
-                let (worktreeName, message) = fetchSessionInfo(for: sessionId)
-                return (sessionId, worktreeName, message)
+                return fetchSessionInfo(for: sessionId)
             }
         }
         return nil
     }
 
-    private func fetchSessionInfo(for chatSessionId: UUID) -> (worktreeName: String, message: String?) {
-        let request: NSFetchRequest<ChatSession> = ChatSession.fetchRequest()
-        request.predicate = NSPredicate(format: "id == %@", chatSessionId as CVarArg)
-        request.fetchLimit = 1
+    private func fetchSessionInfo(for chatSessionId: UUID) -> PendingPermissionInfo? {
+        guard let agentSession = ChatSessionManager.shared.getAgentSession(for: chatSessionId),
+              let request = agentSession.permissionHandler.permissionRequest else {
+            return nil
+        }
 
-        do {
-            if let session = try viewContext.fetch(request).first,
-               let worktree = session.worktree {
-                let name = worktree.branch ?? "Chat"
-                // Get permission message from agent session
-                let agentSession = ChatSessionManager.shared.getAgentSession(for: chatSessionId)
-                let message = agentSession?.permissionHandler.permissionRequest?.message
-                return (name, message)
-            }
-        } catch {}
-        return ("Chat", nil)
+        let request2: NSFetchRequest<ChatSession> = ChatSession.fetchRequest()
+        request2.predicate = NSPredicate(format: "id == %@", chatSessionId as CVarArg)
+        request2.fetchLimit = 1
+
+        var worktreeName = "Chat"
+        if let session = try? viewContext.fetch(request2).first,
+           let worktree = session.worktree {
+            worktreeName = worktree.branch ?? "Chat"
+        }
+
+        return PendingPermissionInfo(
+            sessionId: chatSessionId,
+            worktreeName: worktreeName,
+            message: request.message,
+            options: request.options ?? [],
+            handler: agentSession.permissionHandler
+        )
     }
 
     var body: some View {
@@ -54,52 +60,93 @@ struct PermissionBannerView: View {
     }
 
     @ViewBuilder
-    private func bannerContent(info: (sessionId: UUID, worktreeName: String, message: String?)) -> some View {
-        Button {
-            onNavigate(info.sessionId)
-        } label: {
-            HStack(spacing: 10) {
-                // Pulsing indicator
-                Circle()
-                    .fill(.orange)
-                    .frame(width: 8, height: 8)
-                    .overlay {
-                        Circle()
-                            .stroke(.orange.opacity(0.5), lineWidth: 2)
-                            .scaleEffect(1.5)
-                    }
+    private func bannerContent(info: PendingPermissionInfo) -> some View {
+        HStack(spacing: 12) {
+            // Left side - clickable to navigate
+            Button {
+                onNavigate(info.sessionId)
+            } label: {
+                HStack(spacing: 10) {
+                    // Pulsing indicator
+                    Circle()
+                        .fill(.orange)
+                        .frame(width: 8, height: 8)
+                        .overlay {
+                            Circle()
+                                .stroke(.orange.opacity(0.5), lineWidth: 2)
+                                .scaleEffect(1.5)
+                        }
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("permission.banner.title \(info.worktreeName)")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.primary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("permission.banner.title \(info.worktreeName)")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.primary)
 
-                    if let message = info.message, !message.isEmpty {
-                        Text(message)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                        if let message = info.message, !message.isEmpty {
+                            Text(message)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                     }
                 }
-
-                Spacer(minLength: 8)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.tertiary)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .frame(maxWidth: 380)
-            .background { glassBackground }
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(strokeColor, lineWidth: 1)
+            .buttonStyle(.plain)
+
+            Spacer(minLength: 8)
+
+            // Action buttons
+            HStack(spacing: 6) {
+                if let denyOption = info.options.first(where: { $0.kind == "deny" }) {
+                    Button {
+                        info.handler.respondToPermission(optionId: denyOption.optionId)
+                    } label: {
+                        Text("permission.action.deny")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(denyButtonBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if let allowOption = info.options.first(where: { $0.kind == "allow" }) {
+                    Button {
+                        info.handler.respondToPermission(optionId: allowOption.optionId)
+                    } label: {
+                        Text("permission.action.allow")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.accentColor)
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            .shadow(color: .black.opacity(colorScheme == .dark ? 0.4 : 0.15), radius: 20, y: 8)
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(maxWidth: 420)
+        .background { glassBackground }
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(strokeColor, lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.4 : 0.15), radius: 20, y: 8)
+    }
+
+    @ViewBuilder
+    private var denyButtonBackground: some View {
+        if colorScheme == .dark {
+            Color.white.opacity(0.1)
+        } else {
+            Color.black.opacity(0.06)
+        }
     }
 
     @ViewBuilder
@@ -134,4 +181,14 @@ struct PermissionBannerView: View {
     private var scrimColor: Color {
         colorScheme == .dark ? .black.opacity(0.12) : .white.opacity(0.06)
     }
+}
+
+// MARK: - Helper Types
+
+private struct PendingPermissionInfo {
+    let sessionId: UUID
+    let worktreeName: String
+    let message: String?
+    let options: [PermissionOption]
+    let handler: AgentPermissionHandler
 }

@@ -392,22 +392,35 @@ actor AgentTerminalDelegate {
     }
 
     /// Drain available output without removing handlers (safe for running processes)
-    /// Uses availableData which is non-blocking and returns immediately
+    /// Uses read(upToCount:) which throws Swift errors instead of availableData which throws ObjC exceptions
     private func drainAvailableOutput(terminalId: String, process: Process) {
+        // Only drain if process is still running - if terminated, the handles may be invalid
+        guard process.isRunning else { return }
+        
         // Drain stdout non-blocking
         if let outputPipe = process.standardOutput as? Pipe {
             let handle = outputPipe.fileHandleForReading
-            let data = handle.availableData
-            if !data.isEmpty, let output = String(data: data, encoding: .utf8) {
-                appendOutput(terminalId: terminalId, output: output)
+            do {
+                // Use read(upToCount:) which throws Swift errors instead of availableData
+                // which throws ObjC NSException when the file handle is closed
+                if let data = try handle.read(upToCount: 65536), !data.isEmpty,
+                   let output = String(data: data, encoding: .utf8) {
+                    appendOutput(terminalId: terminalId, output: output)
+                }
+            } catch {
+                // File handle closed or process terminated - nothing to drain
             }
         }
         // Drain stderr non-blocking
         if let errorPipe = process.standardError as? Pipe {
             let handle = errorPipe.fileHandleForReading
-            let data = handle.availableData
-            if !data.isEmpty, let output = String(data: data, encoding: .utf8) {
-                appendOutput(terminalId: terminalId, output: output)
+            do {
+                if let data = try handle.read(upToCount: 65536), !data.isEmpty,
+                   let output = String(data: data, encoding: .utf8) {
+                    appendOutput(terminalId: terminalId, output: output)
+                }
+            } catch {
+                // File handle closed or process terminated - nothing to drain
             }
         }
     }
