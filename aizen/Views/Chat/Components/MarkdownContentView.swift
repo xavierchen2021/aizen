@@ -15,6 +15,17 @@ struct MessageContentView: View {
     var isStreaming: Bool = false
 
     var body: some View {
+        StreamingMarkdownView(content: content, isStreaming: isStreaming)
+    }
+}
+
+// MARK: - Legacy Message Content View (kept for reference)
+
+struct LegacyMessageContentView: View {
+    let content: String
+    var isStreaming: Bool = false
+
+    var body: some View {
         MarkdownRenderedView(content: content, isStreaming: isStreaming)
     }
 }
