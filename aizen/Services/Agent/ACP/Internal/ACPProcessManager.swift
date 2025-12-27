@@ -287,9 +287,18 @@ actor ACPProcessManager {
             switch scanForJSONMessageEnd(in: readBuffer, from: readBuffer.startIndex) {
             case .complete(let endIndex):
                 let end = readBuffer.index(after: endIndex)
-                let message = readBuffer[..<end]
+                let message = Data(readBuffer[..<end])
                 readBuffer.removeSubrange(..<end)
-                return Data(message)
+
+                // Validate this looks like JSON-RPC (contains "jsonrpc" key)
+                // This filters out non-JSON content that happens to have balanced braces
+                // (e.g., raw source code output from agents like Codex)
+                if looksLikeJSONRPC(message) {
+                    return message
+                } else {
+                    // Not JSON-RPC, skip it and continue looking
+                    continue
+                }
             case .needMore:
                 return nil
             case .invalid:
@@ -297,6 +306,14 @@ actor ACPProcessManager {
                 continue
             }
         }
+    }
+
+    /// Quick check if data looks like a JSON-RPC message
+    /// JSON-RPC messages must contain "jsonrpc" key
+    private func looksLikeJSONRPC(_ data: Data) -> Bool {
+        // Check for "jsonrpc" which is required in all JSON-RPC 2.0 messages
+        let jsonrpcMarker = "\"jsonrpc\"".data(using: .utf8)!
+        return data.range(of: jsonrpcMarker) != nil
     }
 
     private func findJSONStartIndex(in buffer: Data) -> Data.Index? {
