@@ -1,5 +1,7 @@
 # Aizen
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 [![macOS](https://img.shields.io/badge/macOS-13.5+-black?logo=apple)](https://aizen.win)
 [![Swift](https://img.shields.io/badge/Swift-5.0+-F05138?logo=swift&logoColor=white)](https://swift.org)
 [![License](https://img.shields.io/badge/License-GPL%203.0-blue)](LICENSE)
