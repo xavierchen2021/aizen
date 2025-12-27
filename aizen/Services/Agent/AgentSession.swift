@@ -376,9 +376,6 @@ class AgentSession: ObservableObject, ACPClientDelegate {
         if response.success {
             logger.info("Mode change succeeded: \(modeId)")
             currentModeId = modeId
-            if let modeName = availableModes.first(where: { $0.id == modeId })?.name {
-                addSystemMessage("Mode changed to \(modeName)")
-            }
         } else {
             logger.warning("Mode change response indicated failure")
         }

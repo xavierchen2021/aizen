@@ -6,6 +6,20 @@
 import SwiftUI
 import AppKit
 
+// MARK: - Non-Scrolling Scroll View
+
+private class NonScrollingScrollView: NSScrollView {
+    var scrollingEnabled: Bool = true
+
+    override func scrollWheel(with event: NSEvent) {
+        if scrollingEnabled {
+            super.scrollWheel(with: event)
+        } else {
+            nextResponder?.scrollWheel(with: event)
+        }
+    }
+}
+
 // MARK: - Custom Table View with Copy Support
 
 private class ChatDiffTableView: NSTableView {
@@ -172,8 +186,15 @@ struct SelectableDiffView: NSViewRepresentable {
     let fontFamily: String
     var scrollable: Bool = true
 
+    static func calculateRowHeight(fontSize: Double, fontFamily: String) -> CGFloat {
+        let font = NSFont(name: fontFamily, size: fontSize) ?? NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        return ceil(font.ascender - font.descender + font.leading) + 4
+    }
+
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSScrollView()
+        let scrollView = NonScrollingScrollView()
+        scrollView.scrollingEnabled = scrollable
+        
         let tableView = ChatDiffTableView()
         tableView.coordinator = context.coordinator
 
@@ -220,6 +241,9 @@ struct SelectableDiffView: NSViewRepresentable {
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        if let nonScrolling = scrollView as? NonScrollingScrollView {
+            nonScrolling.scrollingEnabled = scrollable
+        }
         context.coordinator.updateData(lines: lines, fontSize: fontSize, fontFamily: fontFamily)
     }
 

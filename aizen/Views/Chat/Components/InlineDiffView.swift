@@ -42,8 +42,8 @@ struct InlineDiffView: View {
     }
     
     private var previewHeight: CGFloat {
-        let lineHeight = max(fontSize + 4, 14)
-        return CGFloat(previewLines.count) * lineHeight + 8
+        let rowHeight = SelectableDiffView.calculateRowHeight(fontSize: fontSize, fontFamily: terminalFontName)
+        return CGFloat(previewLines.count) * rowHeight
     }
 
     var body: some View {
