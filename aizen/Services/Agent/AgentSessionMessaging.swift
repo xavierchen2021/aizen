@@ -40,7 +40,7 @@ extension AgentSession {
 
         // Build content blocks array for sending to agent
         var contentBlocks: [ContentBlock] = []
-        
+
         // Build UI content blocks (for display - excludes prepended text from main block)
         var uiContentBlocks: [ContentBlock] = []
 
@@ -55,7 +55,7 @@ extension AgentSession {
         // Add text content (with attachments prepended if any) - this goes to agent
         let fullContent = prependedContent.isEmpty ? content : prependedContent + content
         contentBlocks.append(.text(TextContent(text: fullContent, annotations: nil, _meta: nil)))
-        
+
         // For UI, only add the typed message as main text block
         uiContentBlocks.append(.text(TextContent(text: content, annotations: nil, _meta: nil)))
 
@@ -87,12 +87,14 @@ extension AgentSession {
 
             case .text(let pastedText):
                 // Pasted text - add as separate text block for UI display
-                uiContentBlocks.append(.text(TextContent(text: pastedText, annotations: nil, _meta: nil)))
-                
+                uiContentBlocks.append(
+                    .text(TextContent(text: pastedText, annotations: nil, _meta: nil)))
+
             case .reviewComments, .buildError:
                 // These are prepended to content for agent, but also show as attachment in UI
                 if let attachmentContent = attachment.contentForAgent {
-                    uiContentBlocks.append(.text(TextContent(text: attachmentContent, annotations: nil, _meta: nil)))
+                    uiContentBlocks.append(
+                        .text(TextContent(text: attachmentContent, annotations: nil, _meta: nil)))
                 }
             }
         }
@@ -109,7 +111,8 @@ extension AgentSession {
             // listener Task may not have processed them all yet
             let response = try await client.sendPrompt(sessionId: sessionId, content: contentBlocks)
 
-            logger.debug("Prompt response received with stop reason: \(response.stopReason.rawValue)")
+            logger.debug(
+                "Prompt response received with stop reason: \(response.stopReason.rawValue)")
 
             // Delay setting isStreaming = false to allow buffered notifications to be processed
             // The AsyncStream may still have notifications queued that need to update messages
