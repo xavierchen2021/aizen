@@ -166,6 +166,24 @@ struct AppearancePreviewCard: View {
     }
 }
 
+// MARK: - Language
+
+enum AppLanguage: String, CaseIterable, Identifiable {
+    case system = "system"
+    case english = "en"
+    case chinese = "zh-Hans"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .system: return String(localized: "System")
+        case .english: return "English"
+        case .chinese: return "简体中文"
+        }
+    }
+}
+
 struct GeneralSettingsView: View {
     private let logger = Logger.settings
 
@@ -173,6 +191,10 @@ struct GeneralSettingsView: View {
 
     // Appearance
     @AppStorage("appearanceMode") private var appearanceMode: String = AppearanceMode.system.rawValue
+
+    // Language
+    @State private var selectedLanguage: AppLanguage = .system
+    @State private var showingRestartAlert = false
 
     // Default Apps
     @AppStorage("defaultTerminalBundleId") private var defaultTerminalBundleId: String?
@@ -202,6 +224,19 @@ struct GeneralSettingsView: View {
             Section("Appearance") {
                 AppearancePickerView(selection: $appearanceMode)
                     .frame(maxWidth: .infinity)
+            }
+
+            // MARK: - Language
+
+            Section("Language") {
+                Picker("Language", selection: $selectedLanguage) {
+                    ForEach(AppLanguage.allCases) { language in
+                        Text(language.displayName).tag(language)
+                    }
+                }
+                .onChange(of: selectedLanguage) { newValue in
+                    applyLanguage(newValue)
+                }
             }
 
             // MARK: - Default Apps
@@ -348,6 +383,9 @@ struct GeneralSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear {
+            loadCurrentLanguage()
+        }
         .alert(LocalizedStringKey("settings.advanced.reset.alert.title"), isPresented: $showingResetConfirmation) {
             Button(LocalizedStringKey("settings.advanced.reset.alert.cancel"), role: .cancel) {}
             Button(LocalizedStringKey("settings.advanced.reset.alert.confirm"), role: .destructive) {
@@ -355,6 +393,14 @@ struct GeneralSettingsView: View {
             }
         } message: {
             Text("settings.advanced.reset.alert.message")
+        }
+        .alert("Restart Required", isPresented: $showingRestartAlert) {
+            Button("Later", role: .cancel) {}
+            Button("Restart Now") {
+                restartApp()
+            }
+        } message: {
+            Text("Please restart the app to apply the language change.")
         }
     }
 
@@ -377,6 +423,51 @@ struct GeneralSettingsView: View {
         case "files": return showFilesTab
         case "browser": return showBrowserTab
         default: return false
+        }
+    }
+
+    // MARK: - Language
+
+    private func loadCurrentLanguage() {
+        if let languages = UserDefaults.standard.array(forKey: "AppleLanguages") as? [String],
+           let first = languages.first {
+            if first.hasPrefix("zh") {
+                selectedLanguage = .chinese
+            } else if first.hasPrefix("en") {
+                selectedLanguage = .english
+            } else {
+                selectedLanguage = .system
+            }
+        } else {
+            selectedLanguage = .system
+        }
+    }
+
+    private func applyLanguage(_ language: AppLanguage) {
+        switch language {
+        case .system:
+            UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+        case .english:
+            UserDefaults.standard.set(["en"], forKey: "AppleLanguages")
+        case .chinese:
+            UserDefaults.standard.set(["zh-Hans"], forKey: "AppleLanguages")
+        }
+        UserDefaults.standard.synchronize()
+        showingRestartAlert = true
+    }
+
+    private func restartApp() {
+        let bundleURL = Bundle.main.bundleURL
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            task.arguments = ["-n", bundleURL.path]
+            try? task.run()
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                NSApplication.shared.terminate(nil)
+            }
         }
     }
 
