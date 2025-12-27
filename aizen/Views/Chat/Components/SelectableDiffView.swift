@@ -170,6 +170,7 @@ struct SelectableDiffView: NSViewRepresentable {
     let lines: [ChatDiffLine]
     let fontSize: Double
     let fontFamily: String
+    var scrollable: Bool = true
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSScrollView()
@@ -197,9 +198,18 @@ struct SelectableDiffView: NSViewRepresentable {
         tableView.dataSource = context.coordinator
 
         scrollView.documentView = tableView
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = true
-        scrollView.autohidesScrollers = true
+        
+        if scrollable {
+            scrollView.hasVerticalScroller = true
+            scrollView.hasHorizontalScroller = true
+            scrollView.autohidesScrollers = true
+        } else {
+            scrollView.hasVerticalScroller = false
+            scrollView.hasHorizontalScroller = false
+            scrollView.verticalScrollElasticity = .none
+            scrollView.horizontalScrollElasticity = .none
+        }
+        
         scrollView.backgroundColor = .clear
         scrollView.drawsBackground = false
 

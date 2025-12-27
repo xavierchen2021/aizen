@@ -73,7 +73,8 @@ struct InlineDiffView: View {
                     SelectableDiffView(
                         lines: previewLines,
                         fontSize: fontSize,
-                        fontFamily: terminalFontName
+                        fontFamily: terminalFontName,
+                        scrollable: false
                     )
                     .frame(height: previewHeight)
 

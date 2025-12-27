@@ -61,8 +61,8 @@ struct PermissionBannerView: View {
 
     @ViewBuilder
     private func bannerContent(info: PendingPermissionInfo) -> some View {
-        HStack(spacing: 12) {
-            // Left side - clickable to navigate
+        VStack(alignment: .leading, spacing: 10) {
+            // Top row - clickable to navigate
             Button {
                 onNavigate(info.sessionId)
             } label: {
@@ -89,32 +89,32 @@ struct PermissionBannerView: View {
                                 .lineLimit(1)
                         }
                     }
+                    
+                    Spacer(minLength: 0)
                 }
             }
             .buttonStyle(.plain)
 
-            Spacer(minLength: 8)
-
-            // Action buttons - show all options
-            HStack(spacing: 6) {
+            // Bottom row - action buttons
+            HStack(spacing: 8) {
                 ForEach(info.options, id: \.optionId) { option in
                     Button {
                         info.handler.respondToPermission(optionId: option.optionId)
                     } label: {
-                        HStack(spacing: 3) {
+                        HStack(spacing: 4) {
                             if option.kind.contains("allow") {
                                 Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 9))
+                                    .font(.system(size: 10))
                             } else if option.kind.contains("reject") {
                                 Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 9))
+                                    .font(.system(size: 10))
                             }
                             Text(option.name)
                                 .font(.system(size: 11, weight: .medium))
                         }
                         .foregroundStyle(buttonForeground(for: option))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
                         .background(buttonBackground(for: option))
                         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                     }
@@ -123,7 +123,7 @@ struct PermissionBannerView: View {
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.vertical, 12)
         .frame(maxWidth: 420)
         .background { glassBackground }
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))

@@ -55,11 +55,12 @@ extension ChatSessionViewModel {
 
     /// Rebuild timeline with tool call grouping by message boundaries
     /// Flow: Message 1 → [Tool calls grouped] → Message 2 → [Tool calls grouped] → ...
+    /// System messages (interrupts) appear after turn summaries and before the next user message
     func rebuildTimelineWithGrouping(isStreaming: Bool) {
         // Filter tool calls (skip children, they render inside parent)
         let topLevelCalls = toolCalls.filter { $0.parentToolCallId == nil }
 
-        // Create merged timeline entries sorted by timestamp
+        // Create merged timeline entries sorted by timestamp (including system messages)
         enum EntryType {
             case message(MessageItem)
             case toolCall(ToolCall)
@@ -78,14 +79,22 @@ extension ChatSessionViewModel {
         // Turn summary ONLY appears when turn actually ends:
         // 1. User sends new message (interrupts/follows agent)
         // 2. Streaming ends (agent finishes responding)
+        // System messages (interrupts) are buffered and inserted after turn summaries
         var items: [TimelineItem] = []
         var toolCallBuffer: [ToolCall] = []
         var turnToolCalls: [ToolCall] = []  // Accumulate all tool calls in current turn
         var lastAgentMessageId: String?
+        var pendingSystemMessages: [MessageItem] = []  // System messages waiting for turn end
 
         for entry in entries {
             switch entry.type {
             case .message(let msg):
+                // System messages are buffered until turn ends
+                if msg.role == .system {
+                    pendingSystemMessages.append(msg)
+                    continue
+                }
+
                 // User message = TURN BOUNDARY
                 if msg.role == .user {
                     // Group any remaining buffered tool calls
@@ -105,6 +114,11 @@ extension ChatSessionViewModel {
                         items.append(.turnSummary(summary))
                         turnToolCalls = []  // Reset for next turn
                     }
+                    // Add pending system messages after turn summary, before user message
+                    for sysMsg in pendingSystemMessages {
+                        items.append(.message(sysMsg))
+                    }
+                    pendingSystemMessages = []
                 }
 
                 // Agent message after tools: just group them (turn not over yet)
@@ -149,11 +163,26 @@ extension ChatSessionViewModel {
                 items.append(.toolCallGroup(group))
                 let summary = createTurnSummary(from: turnToolCalls)
                 items.append(.turnSummary(summary))
+                // Add pending system messages after final turn summary
+                for sysMsg in pendingSystemMessages {
+                    items.append(.message(sysMsg))
+                }
+                pendingSystemMessages = []
             }
         } else if !isStreaming && !turnToolCalls.isEmpty {
             // Turn ended with agent message after tools - add summary now
             let summary = createTurnSummary(from: turnToolCalls)
             items.append(.turnSummary(summary))
+            // Add pending system messages after final turn summary
+            for sysMsg in pendingSystemMessages {
+                items.append(.message(sysMsg))
+            }
+            pendingSystemMessages = []
+        }
+
+        // Any remaining system messages (e.g., if no turn was active) go at the end
+        for sysMsg in pendingSystemMessages {
+            items.append(.message(sysMsg))
         }
 
         timelineItems = items
