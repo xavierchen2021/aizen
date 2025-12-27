@@ -108,8 +108,8 @@ enum SessionUpdate: Codable {
 
 struct ToolCallUpdate: Codable {
     let toolCallId: String
-    let title: String
-    let kind: ToolKind
+    let title: String?  // Optional for Codex compatibility
+    let kind: ToolKind?  // Optional for Codex compatibility
     let status: ToolStatus
     let content: [ToolCallContent]
     let locations: [ToolLocation]?
@@ -123,6 +123,26 @@ struct ToolCallUpdate: Codable {
         case rawInput
         case rawOutput
         case _meta
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        toolCallId = try container.decode(String.self, forKey: .toolCallId)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        status = try container.decode(ToolStatus.self, forKey: .status)
+        // content is optional for Codex which doesn't send it
+        content = try container.decodeIfPresent([ToolCallContent].self, forKey: .content) ?? []
+        locations = try container.decodeIfPresent([ToolLocation].self, forKey: .locations)
+        rawInput = try container.decodeIfPresent(AnyCodable.self, forKey: .rawInput)
+        rawOutput = try container.decodeIfPresent(AnyCodable.self, forKey: .rawOutput)
+        _meta = try container.decodeIfPresent([String: AnyCodable].self, forKey: ._meta)
+
+        // kind is optional - Codex may send it as string that needs mapping
+        if let kindString = try? container.decode(String.self, forKey: .kind) {
+            kind = ToolKind(rawValue: kindString)
+        } else {
+            kind = try container.decodeIfPresent(ToolKind.self, forKey: .kind)
+        }
     }
 }
 
@@ -206,7 +226,7 @@ extension SessionUpdate {
             return [
                 ToolCall(
                     toolCallId: update.toolCallId,
-                    title: update.title,
+                    title: update.title ?? (update.kind?.rawValue.capitalized ?? "Tool"),
                     kind: update.kind,
                     status: update.status,
                     content: update.content,

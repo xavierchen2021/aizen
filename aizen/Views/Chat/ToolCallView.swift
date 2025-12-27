@@ -32,7 +32,8 @@ struct ToolCallView: View {
         let isCurrentIteration = currentIterationId == nil || toolCall.iterationId == currentIterationId
 
         // Default expanded for current iteration edit/diff content (terminal collapsed by default)
-        let shouldExpand = isCurrentIteration && (toolCall.kind == .edit || toolCall.kind == .delete ||
+        let kind = toolCall.kind
+        let shouldExpand = isCurrentIteration && (kind == .edit || kind == .delete ||
             toolCall.content.contains { content in
                 switch content {
                 case .diff: return true
@@ -204,7 +205,8 @@ struct ToolCallView: View {
             }
         }
         // For file operations, title often contains the path
-        if [.read, .edit, .delete, .move].contains(toolCall.kind),
+        if let kind = toolCall.kind,
+           [.read, .edit, .delete, .move].contains(kind),
            toolCall.title.contains("/") {
             return toolCall.title
         }
@@ -292,7 +294,7 @@ struct ToolCallView: View {
     }
 
     private var editPreviewText: String? {
-        guard toolCall.kind == .edit else { return nil }
+        guard toolCall.kind == .some(.edit) else { return nil }
 
         for block in toolCall.content {
             switch block {
@@ -323,10 +325,10 @@ struct ToolCallView: View {
             if toolCall.title.contains("/") || toolCall.title.contains(".") {
                 FileIconView(path: toolCall.title, size: 12)
             } else {
-                Image(systemName: toolCall.kind.symbolName)
+                Image(systemName: toolCall.resolvedKind.symbolName)
             }
         default:
-            Image(systemName: toolCall.kind.symbolName)
+            Image(systemName: toolCall.resolvedKind.symbolName)
         }
     }
 
@@ -343,7 +345,7 @@ struct ToolCallView: View {
     private var displayTitle: String {
         let trimmed = toolCall.title.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { return trimmed }
-        return toolCall.kind.rawValue
+        return toolCall.resolvedKind.rawValue
     }
 
 }

@@ -171,7 +171,7 @@ extension ChatSessionViewModel {
         // Collect file changes from all edit tool calls
         var fileChanges: [String: FileChangeSummary] = [:]
 
-        for call in toolCalls where call.kind == .edit {
+        for call in toolCalls where call.kind == .some(.edit) {
             let filePath: String?
             if let path = call.locations?.first?.path {
                 filePath = path

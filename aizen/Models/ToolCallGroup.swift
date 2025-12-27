@@ -72,7 +72,7 @@ struct ToolCallGroup: Identifiable {
 
     /// Tool kinds used in this group (for icon display)
     var toolKinds: Set<ToolKind> {
-        Set(toolCalls.map { $0.kind })
+        Set(toolCalls.compactMap { $0.kind })
     }
 
     /// Summary text (e.g., "5 tool calls")
@@ -119,7 +119,7 @@ struct ToolCallGroup: Identifiable {
     var fileChanges: [FileChangeSummary] {
         var changes: [String: FileChangeSummary] = [:]
 
-        for call in toolCalls where call.kind == .edit {
+        for call in toolCalls where call.kind == .some(.edit) {
             // Extract file path from title or locations
             let filePath: String?
             if let path = call.locations?.first?.path {

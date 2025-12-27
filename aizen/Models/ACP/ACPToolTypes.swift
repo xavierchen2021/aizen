@@ -119,7 +119,7 @@ struct ToolCallTerminal: Codable {
 struct ToolCall: Codable, Identifiable {
     let toolCallId: String
     var title: String
-    var kind: ToolKind
+    var kind: ToolKind?  // Optional for Codex compatibility
     var status: ToolStatus
     var content: [ToolCallContent]
     var locations: [ToolLocation]?
@@ -136,6 +136,11 @@ struct ToolCall: Codable, Identifiable {
         case title, kind, status, content, locations
         case rawInput
         case rawOutput
+    }
+
+    /// Resolved kind for display - defaults to .other if not provided
+    var resolvedKind: ToolKind {
+        kind ?? .other
     }
 
     /// Get content as ContentBlocks for backwards compatibility with existing UI
