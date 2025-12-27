@@ -47,7 +47,6 @@ struct TurnSummaryView: View {
                 }
             }
         }
-        .padding(.leading, 4)
     }
 }
 
