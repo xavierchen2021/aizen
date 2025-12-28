@@ -97,6 +97,10 @@ class RepositoryManager: ObservableObject {
         repository.path = mainRepoPath
         repository.lastUpdated = Date()
 
+        // Update name based on new folder name
+        let newName = URL(fileURLWithPath: mainRepoPath).lastPathComponent
+        repository.name = newName
+
         // Rescan worktrees for the new location
         try await scanWorktrees(for: repository)
 

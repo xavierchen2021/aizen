@@ -28,6 +28,7 @@ struct WorkspaceSidebarView: View {
     @State private var refreshTask: Task<Void, Never>?
     @State private var missingRepository: RepositoryManager.MissingRepository?
     @State private var showingMissingRepoAlert = false
+    @State private var showingRelocateFilePicker = false
     @AppStorage("repositoryStatusFilters") private var storedStatusFilters: String = ""
 
     private var selectedStatusFilters: Set<ItemStatus> {
@@ -402,10 +403,7 @@ struct WorkspaceSidebarView: View {
             Text("The repository \"\(missing.repository.name ?? "Unknown")\" could not be found at:\n\(missing.lastKnownPath)\n\nIt may have been moved or deleted.")
         }
         .fileImporter(
-            isPresented: Binding(
-                get: { missingRepository != nil && !showingMissingRepoAlert },
-                set: { if !$0 { missingRepository = nil } }
-            ),
+            isPresented: $showingRelocateFilePicker,
             allowedContentTypes: [.folder],
             allowsMultipleSelection: false
         ) { result in
@@ -420,8 +418,11 @@ struct WorkspaceSidebarView: View {
     }
 
     private func locateRepository(_ missing: RepositoryManager.MissingRepository) {
-        // Keep missingRepository set so fileImporter opens
         showingMissingRepoAlert = false
+        // Delay slightly to allow alert to dismiss before showing file picker
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            showingRelocateFilePicker = true
+        }
     }
 
     private func removeRepository(_ missing: RepositoryManager.MissingRepository) {
@@ -438,12 +439,19 @@ struct WorkspaceSidebarView: View {
     }
 
     private func handleRelocateResult(_ result: Result<[URL], Error>) {
-        guard let missing = missingRepository else { return }
+        guard let missing = missingRepository else {
+            showingRelocateFilePicker = false
+            return
+        }
 
         switch result {
         case .success(let urls):
             guard let url = urls.first else {
-                missingRepository = nil
+                // User cancelled - show alert again
+                showingRelocateFilePicker = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    showingMissingRepoAlert = true
+                }
                 return
             }
 
@@ -451,15 +459,22 @@ struct WorkspaceSidebarView: View {
                 do {
                     try await repositoryManager.relocateRepository(missing.repository, to: url.path)
                     logger.info("Repository relocated to \(url.path)")
+                    missingRepository = nil
                 } catch {
                     logger.error("Failed to relocate repository: \(error.localizedDescription)")
+                    // Show alert again on failure
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        showingMissingRepoAlert = true
+                    }
                 }
-                missingRepository = nil
             }
 
-        case .failure(let error):
-            logger.error("Failed to select folder: \(error.localizedDescription)")
-            missingRepository = nil
+        case .failure:
+            // User cancelled - show alert again
+            showingRelocateFilePicker = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                showingMissingRepoAlert = true
+            }
         }
     }
 }
