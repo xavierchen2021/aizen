@@ -13,6 +13,7 @@ struct PullRequestDetailPane: View {
 
     @State private var selectedTab: DetailTab = .overview
     @State private var commentText: String = ""
+    @State private var conversationAction: PullRequestsViewModel.ConversationAction = .comment
     @State private var showRequestChangesSheet = false
     @State private var requestChangesText: String = ""
 
@@ -38,7 +39,16 @@ struct PullRequestDetailPane: View {
         .sheet(isPresented: $showRequestChangesSheet) {
             requestChangesSheet
         }
-        .alert("Error", isPresented: .constant(viewModel.actionError != nil)) {
+        .onChange(of: pr.id) { _ in
+            commentText = ""
+            conversationAction = .comment
+            showRequestChangesSheet = false
+            requestChangesText = ""
+        }
+        .alert("Error", isPresented: Binding(
+            get: { viewModel.actionError != nil },
+            set: { _ in viewModel.actionError = nil }
+        )) {
             Button("OK") { viewModel.actionError = nil }
         } message: {
             Text(viewModel.actionError ?? "")
@@ -290,26 +300,125 @@ struct PullRequestDetailPane: View {
     }
 
     private var commentInput: some View {
-        HStack(spacing: 8) {
-            TextField("Add a comment...", text: $commentText, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1...4)
-                .padding(8)
-                .background(Color(nsColor: .textBackgroundColor))
-                .cornerRadius(6)
+        VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                Picker("Action", selection: $conversationAction) {
+                    ForEach(PullRequestsViewModel.ConversationAction.allCases, id: \.self) { action in
+                        Text(conversationActionTitle(action)).tag(action)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .disabled(viewModel.isPerformingAction)
 
-            Button {
-                guard !commentText.isEmpty else { return }
-                let text = commentText
-                commentText = ""
-                Task { await viewModel.addComment(body: text) }
-            } label: {
-                Image(systemName: "paperplane.fill")
+                Spacer()
+
+                if viewModel.hostingInfo?.provider == .gitlab, conversationAction == .requestChanges {
+                    Text("GitLab posts this as a comment.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(commentText.isEmpty || viewModel.isPerformingAction)
+
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $commentText)
+                    .font(.system(size: 13))
+                    .frame(minHeight: 72)
+                    .padding(6)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .cornerRadius(6)
+                    .disabled(viewModel.isPerformingAction)
+
+                if commentText.isEmpty {
+                    Text(conversationPlaceholder)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 12)
+                        .allowsHitTesting(false)
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button {
+                    let body = commentText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    Task {
+                        await viewModel.submitConversationAction(conversationAction, body: body)
+                        if viewModel.actionError == nil {
+                            commentText = ""
+                            conversationAction = .comment
+                        }
+                    }
+                } label: {
+                    Label(conversationActionButtonTitle, systemImage: conversationActionIcon(conversationAction))
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.return, modifiers: [.command])
+                .disabled(!canSubmitConversationAction)
+            }
         }
         .padding(12)
+    }
+
+    private var trimmedCommentText: String {
+        commentText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canSubmitConversationAction: Bool {
+        if viewModel.isPerformingAction {
+            return false
+        }
+
+        switch conversationAction {
+        case .comment, .requestChanges:
+            return !trimmedCommentText.isEmpty
+        case .approve:
+            return viewModel.canApprove
+        }
+    }
+
+    private var conversationPlaceholder: String {
+        switch conversationAction {
+        case .comment:
+            return "Add a comment..."
+        case .approve:
+            return "Optional note for approval..."
+        case .requestChanges:
+            return "Describe the changes needed..."
+        }
+    }
+
+    private var conversationActionButtonTitle: String {
+        switch conversationAction {
+        case .comment:
+            return "Comment"
+        case .approve:
+            return "Approve"
+        case .requestChanges:
+            return "Request Changes"
+        }
+    }
+
+    private func conversationActionTitle(_ action: PullRequestsViewModel.ConversationAction) -> String {
+        switch action {
+        case .comment:
+            return "Comment"
+        case .approve:
+            return "Approve"
+        case .requestChanges:
+            return "Request Changes"
+        }
+    }
+
+    private func conversationActionIcon(_ action: PullRequestsViewModel.ConversationAction) -> String {
+        switch action {
+        case .comment:
+            return "bubble.left"
+        case .approve:
+            return "checkmark"
+        case .requestChanges:
+            return "xmark"
+        }
     }
 
     // MARK: - Action Bar
@@ -424,45 +533,49 @@ struct PRCommentView: View {
     let comment: PRComment
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // Header
-            HStack(spacing: 6) {
-                Text("@\(comment.author)")
-                    .font(.system(size: 12, weight: .semibold))
+        HStack(alignment: .top, spacing: 10) {
+            avatarView
 
-                if comment.isReview, let state = comment.reviewState {
-                    reviewBadge(for: state)
-                }
+            VStack(alignment: .leading, spacing: 6) {
+                // Header
+                HStack(spacing: 6) {
+                    Text("@\(comment.author)")
+                        .font(.system(size: 12, weight: .semibold))
 
-                Spacer()
-
-                Text(comment.relativeDate)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-            }
-
-            // Message content with markdown
-            MessageContentView(content: comment.body)
-
-            // File reference if inline comment
-            if let path = comment.path {
-                HStack(spacing: 4) {
-                    Image(systemName: "doc.text")
-                        .font(.system(size: 10))
-                    Text(path)
-                    if let line = comment.line {
-                        Text(":\(line)")
+                    if comment.isReview, let state = comment.reviewState {
+                        reviewBadge(for: state)
                     }
+
+                    Spacer()
+
+                    Text(comment.relativeDate)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
                 }
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .padding(.top, 4)
+
+                // Message content with markdown
+                MessageContentView(content: comment.body)
+
+                // File reference if inline comment
+                if let path = comment.path {
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc.text")
+                            .font(.system(size: 10))
+                        Text(path)
+                        if let line = comment.line {
+                            Text(":\(line)")
+                        }
+                    }
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
+                }
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(bubbleBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(bubbleBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var bubbleBackground: some View {
@@ -472,6 +585,61 @@ struct PRCommentView: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .strokeBorder(.separator.opacity(0.3), lineWidth: 0.5)
             }
+    }
+
+    private var avatarView: some View {
+        let size: CGFloat = 28
+        return Group {
+            if let avatarURL = comment.avatarURL, let url = URL(string: avatarURL) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    default:
+                        initialsAvatar
+                    }
+                }
+            } else {
+                initialsAvatar
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .overlay(
+            Circle()
+                .strokeBorder(.separator.opacity(0.3), lineWidth: 0.5)
+        )
+    }
+
+    private var initialsAvatar: some View {
+        ZStack {
+            Circle()
+                .fill(Color.accentColor.opacity(0.2))
+            Text(initials)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.primary)
+        }
+    }
+
+    private var initials: String {
+        let trimmed = comment.author.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return "?" }
+
+        let parts = trimmed
+            .replacingOccurrences(of: "@", with: "")
+            .split(whereSeparator: { $0 == " " || $0 == "." || $0 == "-" || $0 == "_" })
+
+        if let first = parts.first?.first, let second = parts.dropFirst().first?.first {
+            return String([first, second]).uppercased()
+        }
+
+        if let first = parts.first?.first {
+            return String(first).uppercased()
+        }
+
+        return "?"
     }
 
     @ViewBuilder

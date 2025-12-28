@@ -111,6 +111,7 @@ struct PullRequest: Identifiable, Equatable, Sendable, Hashable {
 struct PRComment: Identifiable, Equatable, Sendable {
     let id: String
     let author: String
+    let avatarURL: String?
     let body: String
     let createdAt: Date
     let isReview: Bool

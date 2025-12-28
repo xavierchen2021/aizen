@@ -1034,6 +1034,7 @@ actor GitHostingService {
 
                 struct Author: Decodable {
                     let login: String
+                    let avatarUrl: String?
                 }
             }
 
@@ -1046,6 +1047,7 @@ actor GitHostingService {
 
                 struct Author: Decodable {
                     let login: String
+                    let avatarUrl: String?
                 }
             }
         }
@@ -1060,6 +1062,7 @@ actor GitHostingService {
                 comments.append(PRComment(
                     id: comment.id,
                     author: comment.author.login,
+                    avatarURL: comment.author.avatarUrl,
                     body: comment.body,
                     createdAt: comment.createdAt,
                     isReview: false,
@@ -1077,6 +1080,7 @@ actor GitHostingService {
                     comments.append(PRComment(
                         id: review.id,
                         author: review.author.login,
+                        avatarURL: review.author.avatarUrl,
                         body: body,
                         createdAt: review.submittedAt ?? Date(),
                         isReview: true,
@@ -1116,6 +1120,7 @@ actor GitHostingService {
 
                 struct Author: Decodable {
                     let username: String
+                    let avatar_url: String?
                 }
             }
         }
@@ -1140,6 +1145,7 @@ actor GitHostingService {
                 return PRComment(
                     id: String(note.id),
                     author: note.author.username,
+                    avatarURL: note.author.avatar_url,
                     body: note.body,
                     createdAt: createdAt,
                     isReview: false,
