@@ -75,8 +75,6 @@ struct AgentUpdateSheet: View {
                     .padding(.horizontal)
             }
 
-            Spacer()
-
             // Actions
             HStack(spacing: 12) {
                 Button("Later") {
@@ -91,9 +89,10 @@ struct AgentUpdateSheet: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(isUpdating)
             }
+            .padding(.top, 8)
         }
         .padding(24)
-        .frame(width: 400, height: 350)
+        .frame(width: 400)
     }
 
     private func performUpdate() {
