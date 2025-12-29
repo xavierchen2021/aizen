@@ -27,13 +27,17 @@ struct InitializeResponse: Codable {
 
 struct NewSessionResponse: Codable {
     let sessionId: SessionId
+    // Legacy API (backward compatibility)
     let modes: ModesInfo?
     let models: ModelsInfo?
+    // New API (takes precedence over modes/models)
+    let configOptions: [SessionConfigOption]?
 
     enum CodingKeys: String, CodingKey {
         case sessionId
         case modes
         case models
+        case configOptions
     }
 }
 
@@ -63,6 +67,14 @@ struct SetModeResponse: Codable {
 
 struct SetModelResponse: Codable {
     let success: Bool
+}
+
+struct SetSessionConfigOptionResponse: Codable {
+    let configOptions: [SessionConfigOption]
+
+    enum CodingKeys: String, CodingKey {
+        case configOptions
+    }
 }
 
 // MARK: - Authentication

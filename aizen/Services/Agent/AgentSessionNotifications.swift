@@ -41,6 +41,14 @@ extension AgentSession {
                 // Mark any in-progress agent message as complete before tool execution
                 markLastMessageComplete()
 
+                // Handle terminal_info meta (experimental Claude Code feature)
+                if let meta = toolCallUpdate._meta,
+                   let terminalInfo = meta["terminal_info"]?.value as? [String: Any],
+                   let terminalIdStr = terminalInfo["terminal_id"] as? String {
+                    // Terminal output will be streamed via terminal_output meta in ToolCallUpdate
+                    logger.debug("Tool call \(toolCallUpdate.toolCallId) has associated terminal: \(terminalIdStr)")
+                }
+
                 // Check if this is a Task (subagent) tool call
                 let isTaskTool = isTaskToolCall(toolCallUpdate)
 
@@ -68,6 +76,41 @@ extension AgentSession {
                 updateToolCalls([toolCall])
             case .toolCallUpdate(let details):
                 let toolCallId = details.toolCallId
+
+                // Handle terminal_output meta (experimental Claude Code feature)
+                if let meta = details._meta,
+                   let terminalOutput = meta["terminal_output"]?.value as? [String: Any],
+                   let terminalIdStr = terminalOutput["terminal_id"] as? String,
+                   let outputData = terminalOutput["data"] as? String {
+                    // Stream terminal output as tool call content
+                    updateToolCallInPlace(id: toolCallId) { updated in
+                        let terminalContent = ToolCallContent.content(.text(TextContent(text: outputData)))
+                        updated.content = coalesceAdjacentTextBlocks(updated.content + [terminalContent])
+                    }
+                }
+
+                // Handle terminal_exit meta (experimental Claude Code feature)
+                if let meta = details._meta,
+                   let terminalExit = meta["terminal_exit"]?.value as? [String: Any],
+                   let terminalIdStr = terminalExit["terminal_id"] as? String {
+                    let exitCode = terminalExit["exit_code"] as? Int
+                    let signal = terminalExit["signal"] as? String
+                    logger.debug("Terminal \(terminalIdStr) exited: code=\(exitCode?.description ?? "nil"), signal=\(signal ?? "nil")")
+
+                    // Add exit status to tool call content
+                    updateToolCallInPlace(id: toolCallId) { updated in
+                        let exitMessage = if let code = exitCode {
+                            "Terminal exited with code \(code)"
+                        } else if let sig = signal {
+                            "Terminal terminated by signal \(sig)"
+                        } else {
+                            "Terminal exited"
+                        }
+                        let exitContent = ToolCallContent.content(.text(TextContent(text: "\n\(exitMessage)\n")))
+                        updated.content = updated.content + [exitContent]
+                    }
+                }
+
                 // O(1) dictionary lookup instead of O(n) array search
                 updateToolCallInPlace(id: toolCallId) { updated in
                     updated.status = details.status ?? updated.status
@@ -149,6 +192,14 @@ extension AgentSession {
             case .currentModeUpdate(let mode):
                 currentModeId = mode
                 currentMode = SessionMode(rawValue: mode)
+            case .configOptionUpdate(let configOptions):
+                // Store config options for UI rendering
+                // Config options take precedence over legacy modes/models
+                if !configOptions.isEmpty {
+                    // TODO: Update UI to display config options
+                    // For now, just log them
+                    logger.info("Config options updated: \(configOptions.count) options")
+                }
             }
         } catch {
             logger.warning("Failed to parse session update: \(error.localizedDescription)\nRaw params: \(String(describing: notification.params))")

@@ -422,7 +422,11 @@ struct AgentListItemView: View {
                         readTextFile: true,
                         writeTextFile: true
                     ),
-                    terminal: true
+                    terminal: true,
+                    meta: [
+                        "terminal_output": AnyCodable(true),
+                        "terminal-auth": AnyCodable(true)
+                    ]
                 )
 
                 _ = try await tempClient.initialize(

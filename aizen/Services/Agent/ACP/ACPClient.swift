@@ -279,6 +279,32 @@ actor ACPClient {
         return SetModelResponse(success: true)
     }
 
+    func setConfigOption(
+        sessionId: SessionId,
+        configId: SessionConfigId,
+        value: SessionConfigValueId
+    ) async throws -> SetSessionConfigOptionResponse {
+        let request = SetSessionConfigOptionRequest(
+            sessionId: sessionId,
+            configId: configId,
+            value: value
+        )
+
+        let response = try await sendRequest(method: "session/set_config_option", params: request)
+
+        // Check for errors
+        if let error = response.error {
+            throw ACPClientError.agentError(error)
+        }
+
+        guard let result = response.result else {
+            throw ACPClientError.invalidResponse
+        }
+
+        let data = try encoder.encode(result)
+        return try decoder.decode(SetSessionConfigOptionResponse.self, from: data)
+    }
+
     func cancelSession(sessionId: SessionId) async throws {
         // session/cancel is a notification per ACP spec (no response expected)
         try await sendCancelNotification(sessionId: sessionId)

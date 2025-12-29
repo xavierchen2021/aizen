@@ -228,7 +228,11 @@ class AgentSession: ObservableObject, ACPClientDelegate {
                         readTextFile: true,
                         writeTextFile: true
                     ),
-                    terminal: true
+                    terminal: true,
+                    meta: [
+                        "terminal_output": AnyCodable(true),
+                        "terminal-auth": AnyCodable(true)
+                    ]
                 )
             )
             logger.info(

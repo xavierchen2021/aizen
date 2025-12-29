@@ -30,6 +30,7 @@ enum SessionUpdate: Codable {
     case plan(Plan)
     case availableCommandsUpdate([AvailableCommand])
     case currentModeUpdate(String)
+    case configOptionUpdate([SessionConfigOption])
 
     enum CodingKeys: String, CodingKey {
         case sessionUpdate
@@ -65,6 +66,9 @@ enum SessionUpdate: Codable {
         case "current_mode_update":
             let modeId = try decoder.container(keyedBy: AnyCodingKey.self).decode(String.self, forKey: AnyCodingKey(stringValue: "currentModeId")!)
             self = .currentModeUpdate(modeId)
+        case "config_option_update":
+            let configOptions = try decoder.container(keyedBy: AnyCodingKey.self).decode([SessionConfigOption].self, forKey: AnyCodingKey(stringValue: "configOptions")!)
+            self = .configOptionUpdate(configOptions)
         default:
             throw DecodingError.dataCorruptedError(forKey: .sessionUpdate, in: container, debugDescription: "Unknown session update type: \(updateType)")
         }
@@ -100,6 +104,10 @@ enum SessionUpdate: Codable {
             try container.encode("current_mode_update", forKey: .sessionUpdate)
             var innerContainer = encoder.container(keyedBy: AnyCodingKey.self)
             try innerContainer.encode(modeId, forKey: AnyCodingKey(stringValue: "currentModeId")!)
+        case .configOptionUpdate(let configOptions):
+            try container.encode("config_option_update", forKey: .sessionUpdate)
+            var innerContainer = encoder.container(keyedBy: AnyCodingKey.self)
+            try innerContainer.encode(configOptions, forKey: AnyCodingKey(stringValue: "configOptions")!)
         }
     }
 }
@@ -197,6 +205,7 @@ extension SessionUpdate {
         case .plan: return "plan"
         case .availableCommandsUpdate: return "available_commands_update"
         case .currentModeUpdate: return "current_mode_update"
+        case .configOptionUpdate: return "config_option_update"
         }
     }
 
@@ -312,6 +321,13 @@ extension SessionUpdate {
     var currentMode: String? {
         switch self {
         case .currentModeUpdate(let mode): return mode
+        default: return nil
+        }
+    }
+
+    var configOptions: [SessionConfigOption]? {
+        switch self {
+        case .configOptionUpdate(let options): return options
         default: return nil
         }
     }

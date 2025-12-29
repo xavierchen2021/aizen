@@ -87,6 +87,18 @@ struct SetModelRequest: Codable {
     }
 }
 
+struct SetSessionConfigOptionRequest: Codable {
+    let sessionId: SessionId
+    let configId: SessionConfigId
+    let value: SessionConfigValueId
+
+    enum CodingKeys: String, CodingKey {
+        case sessionId
+        case configId
+        case value
+    }
+}
+
 // MARK: - Authentication
 
 struct AuthenticateRequest: Codable {

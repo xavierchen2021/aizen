@@ -12,10 +12,18 @@ import Foundation
 struct ClientCapabilities: Codable {
     let fs: FileSystemCapabilities
     let terminal: Bool
+    let meta: [String: AnyCodable]?
+
+    init(fs: FileSystemCapabilities, terminal: Bool, meta: [String: AnyCodable]? = nil) {
+        self.fs = fs
+        self.terminal = terminal
+        self.meta = meta
+    }
 
     enum CodingKeys: String, CodingKey {
         case fs
         case terminal
+        case meta
     }
 }
 
