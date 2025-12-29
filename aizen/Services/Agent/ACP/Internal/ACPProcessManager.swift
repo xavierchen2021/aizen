@@ -259,8 +259,10 @@ actor ACPProcessManager {
         readBuffer.removeAll()
     }
 
-    // MARK: - Newline-Delimited Message Parsing (ACP Spec)
-    // Per ACP spec: Messages are delimited by newlines (\n) and MUST NOT contain embedded newlines
+    // MARK: - JSON Message Parsing
+    // ACP spec: Messages are newline-delimited JSON (one message per line)
+    // However, we handle multi-line JSON to be forgiving with agents that
+    // send pretty-printed JSON
 
     private func drainBufferedMessages() async {
         while let message = popNextMessage() {
@@ -268,30 +270,55 @@ actor ACPProcessManager {
         }
     }
 
-    /// Extract the next newline-delimited message from the buffer
-    /// Per ACP stdio spec: each line is a complete JSON-RPC message
+    /// Extract the next complete JSON message from the buffer
+    /// Strategy:
+    /// 1. Try newline-delimited parsing first (ACP spec, fast path)
+    /// 2. Fall back to JSON object detection if newline parsing fails
     private func popNextMessage() -> Data? {
-        let newline: UInt8 = 0x0A  // '\n'
+        // Skip leading whitespace
+        let whitespace: Set<UInt8> = [0x20, 0x09, 0x0D, 0x0A]  // space, tab, CR, LF
+        while let first = readBuffer.first, whitespace.contains(first) {
+            readBuffer.removeFirst()
+        }
 
-        guard let newlineIndex = readBuffer.firstIndex(of: newline) else {
-            // No complete line yet, wait for more data
+        guard !readBuffer.isEmpty else {
             return nil
         }
 
-        // Extract the line (excluding the newline)
-        let lineData = Data(readBuffer[..<newlineIndex])
+        // Fast path: Try newline-delimited parsing (ACP spec)
+        if let newlineIndex = readBuffer.firstIndex(of: 0x0A) {  // \n
+            let lineData = Data(readBuffer[..<newlineIndex])
 
-        // Remove the line and newline from buffer
-        readBuffer.removeSubrange(...newlineIndex)
-
-        // Skip empty lines
-        let trimmed = lineData.trimmingLeadingWhitespace()
-        if trimmed.isEmpty {
-            // Recursively get next message (skip empty lines)
-            return popNextMessage()
+            // Try to parse the line as JSON
+            if let _ = try? JSONSerialization.jsonObject(with: lineData) {
+                // Valid JSON on this line! Remove line + newline and return
+                readBuffer.removeSubrange(...newlineIndex)
+                return lineData
+            }
+            // If line isn't valid JSON, fall through to object detection
         }
 
-        return lineData
+        // Slow path: Scan for complete JSON object (handles pretty-printed JSON)
+        // This handles agents that send multi-line formatted JSON
+        for i in readBuffer.indices {
+            let byte = readBuffer[i]
+
+            // Only try parsing at JSON object/array endings
+            guard byte == 0x7D || byte == 0x5D else {  // } or ]
+                continue
+            }
+
+            let testData = Data(readBuffer[...i])
+
+            if let _ = try? JSONSerialization.jsonObject(with: testData) {
+                // Valid JSON object found!
+                readBuffer.removeSubrange(...i)
+                return testData
+            }
+        }
+
+        // No complete JSON message found yet - wait for more data
+        return nil
     }
 
     private func flushRemainingBufferIfNeeded() async {
@@ -305,18 +332,5 @@ actor ACPProcessManager {
                 await onDataReceived?(remaining)
             }
         }
-    }
-}
-
-// MARK: - Data Extension
-
-private extension Data {
-    /// Remove leading whitespace bytes (space, tab, carriage return, newline)
-    func trimmingLeadingWhitespace() -> Data {
-        let whitespace: Set<UInt8> = [0x20, 0x09, 0x0D, 0x0A]  // space, tab, CR, LF
-        guard let firstNonWhitespace = self.firstIndex(where: { !whitespace.contains($0) }) else {
-            return Data()
-        }
-        return Data(self[firstNonWhitespace...])
     }
 }
