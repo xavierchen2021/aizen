@@ -159,7 +159,6 @@ struct AgentUsageDetailContent: View {
                     Text("No token usage available.")
                         .foregroundStyle(.secondary)
                 } else {
-                    tokenOverview(periods: report.periods)
                     tokenDetailChart(periods: report.periods)
                 }
             }
@@ -312,7 +311,6 @@ struct AgentUsageDetailContent: View {
 
         return VStack(alignment: .leading, spacing: 10) {
             ForEach(periods, id: \.label) { period in
-                let total = Double(period.totalTokens ?? 0)
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text(period.label)
@@ -330,23 +328,6 @@ struct AgentUsageDetailContent: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-    }
-
-    private func tokenOverview(periods: [UsagePeriodSummary]) -> some View {
-        let maxTokens = max(periods.map { Double($0.totalTokens ?? 0) }.max() ?? 0, 1)
-
-        return VStack(alignment: .leading, spacing: 10) {
-            ForEach(periods, id: \.label) { period in
-                let total = Double(period.totalTokens ?? 0)
-                UsageStatTile(
-                    title: period.label,
-                    primary: UsageFormatter.tokenString(period.totalTokens),
-                    secondary: UsageFormatter.usdString(period.costUSD),
-                    value: total,
-                    maxValue: maxTokens
-                )
             }
         }
     }

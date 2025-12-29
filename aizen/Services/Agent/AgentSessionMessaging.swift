@@ -148,6 +148,13 @@ extension AgentSession {
             // Send cancel notification
             try await client.sendCancelNotification(sessionId: sessionId)
 
+            // Reset streaming state - this is critical for UI to update
+            isStreaming = false
+            resetFinalizeState()
+
+            // Mark any incomplete agent message as complete
+            markLastMessageComplete()
+
             // Add system message indicating cancellation
             let cancelMessage = MessageItem(
                 id: UUID().uuidString,
@@ -161,6 +168,9 @@ extension AgentSession {
             currentThought = nil
         } catch {
             logger.error("Error cancelling prompt: \(error.localizedDescription)")
+            // Still reset streaming state even on error
+            isStreaming = false
+            resetFinalizeState()
         }
     }
 

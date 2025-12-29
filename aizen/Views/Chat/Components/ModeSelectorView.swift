@@ -49,6 +49,8 @@ struct ModeSelectorView: View {
         }
         .menuStyle(.borderlessButton)
         .buttonStyle(.plain)
+        .disabled(session.isStreaming)  // Prevent mode changes during agent turn
+        .opacity(session.isStreaming ? 0.5 : 1.0)
         .id(session.currentModeId)  // Force view update on mode change
     }
 

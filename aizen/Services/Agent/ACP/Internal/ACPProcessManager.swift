@@ -271,9 +271,8 @@ actor ACPProcessManager {
     }
 
     /// Extract the next complete JSON message from the buffer
-    /// Strategy:
-    /// 1. Try newline-delimited parsing first (ACP spec, fast path)
-    /// 2. Fall back to JSON object detection if newline parsing fails
+    /// ACP spec says newline-delimited, but JSON strings can contain \n characters
+    /// We need to find complete JSON objects, not just split on newlines
     private func popNextMessage() -> Data? {
         // Skip leading whitespace
         let whitespace: Set<UInt8> = [0x20, 0x09, 0x0D, 0x0A]  // space, tab, CR, LF
@@ -285,39 +284,41 @@ actor ACPProcessManager {
             return nil
         }
 
-        // Fast path: Try newline-delimited parsing (ACP spec)
-        if let newlineIndex = readBuffer.firstIndex(of: 0x0A) {  // \n
-            let lineData = Data(readBuffer[..<newlineIndex])
+        // Convert to byte array for safe subscript access
+        let bytes = Array(readBuffer)
+        let maxSearch = min(bytes.count, 200000)
 
-            // Try to parse the line as JSON
-            if let _ = try? JSONSerialization.jsonObject(with: lineData) {
-                // Valid JSON on this line! Remove line + newline and return
-                readBuffer.removeSubrange(...newlineIndex)
-                return lineData
-            }
-            // If line isn't valid JSON, fall through to object detection
-        }
+        for endIndex in 0..<maxSearch {
+            let byte = bytes[endIndex]
 
-        // Slow path: Scan for complete JSON object (handles pretty-printed JSON)
-        // This handles agents that send multi-line formatted JSON
-        for i in readBuffer.indices {
-            let byte = readBuffer[i]
+            // Only attempt parsing at potential JSON boundaries
+            // } ends objects, ] ends arrays, \n ends compact JSON lines
+            let isPotentialBoundary = (byte == 0x7D || byte == 0x5D || byte == 0x0A)
 
-            // Only try parsing at JSON object/array endings
-            guard byte == 0x7D || byte == 0x5D else {  // } or ]
+            guard isPotentialBoundary else {
                 continue
             }
 
-            let testData = Data(readBuffer[...i])
+            // Create test data from byte array
+            let testData = Data(bytes[0...endIndex])
 
+            // Try to parse as complete JSON
             if let _ = try? JSONSerialization.jsonObject(with: testData) {
-                // Valid JSON object found!
-                readBuffer.removeSubrange(...i)
+                // Valid complete JSON found!
+                // Ensure we don't remove more than available (buffer may have changed)
+                let removeCount = min(endIndex + 1, readBuffer.count)
+                readBuffer.removeFirst(removeCount)
+                logger.debug("Parsed JSON message, \(testData.count) bytes")
                 return testData
             }
         }
 
-        // No complete JSON message found yet - wait for more data
+        // No complete JSON found in reasonable range
+        if readBuffer.count > 100000 {
+            let bufferSize = readBuffer.count
+            logger.warning("Large buffer (\(bufferSize) bytes) without complete JSON message")
+        }
+
         return nil
     }
 

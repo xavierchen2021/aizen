@@ -30,13 +30,30 @@ extension AgentSession {
 
         do {
             let params = notification.params?.value as? [String: Any] ?? [:]
+
+            // Log the update type for debugging
+            if let update = params["update"] as? [String: Any],
+               let updateType = update["sessionUpdate"] as? String {
+                logger.debug("Processing session update: \(updateType)")
+            }
+
             let data = try JSONSerialization.data(withJSONObject: params)
             let decoder = JSONDecoder()
             decoder.keyDecodingStrategy = .convertFromSnakeCase
             let updateNotification = try decoder.decode(SessionUpdateNotification.self, from: data)
 
-            // Handle different update types using the strongly-typed enum
-            switch updateNotification.update {
+            // Dispatch state updates asynchronously to avoid "Modifying state during view update" warnings
+            Task { @MainActor in
+                await self.processUpdate(updateNotification.update)
+            }
+        } catch {
+            logger.warning("Failed to parse session update: \(error.localizedDescription)\nRaw params: \(String(describing: notification.params))")
+        }
+    }
+
+    /// Process session update (called asynchronously to avoid view update conflicts)
+    private func processUpdate(_ update: SessionUpdate) async {
+        switch update {
             case .toolCall(let toolCallUpdate):
                 // Mark any in-progress agent message as complete before tool execution
                 markLastMessageComplete()
@@ -77,28 +94,20 @@ extension AgentSession {
             case .toolCallUpdate(let details):
                 let toolCallId = details.toolCallId
 
-                // Handle terminal_output meta (experimental Claude Code feature)
-                if let meta = details._meta,
-                   let terminalOutput = meta["terminal_output"]?.value as? [String: Any],
-                   let terminalIdStr = terminalOutput["terminal_id"] as? String,
-                   let outputData = terminalOutput["data"] as? String {
-                    // Stream terminal output as tool call content
-                    updateToolCallInPlace(id: toolCallId) { updated in
+                // Extract terminal meta fields if present (experimental Claude Code feature)
+                var terminalOutputContent: [ToolCallContent] = []
+                if let meta = details._meta {
+                    // Handle terminal_output meta
+                    if let terminalOutput = meta["terminal_output"]?.value as? [String: Any],
+                       let outputData = terminalOutput["data"] as? String {
                         let terminalContent = ToolCallContent.content(.text(TextContent(text: outputData)))
-                        updated.content = coalesceAdjacentTextBlocks(updated.content + [terminalContent])
+                        terminalOutputContent.append(terminalContent)
                     }
-                }
 
-                // Handle terminal_exit meta (experimental Claude Code feature)
-                if let meta = details._meta,
-                   let terminalExit = meta["terminal_exit"]?.value as? [String: Any],
-                   let terminalIdStr = terminalExit["terminal_id"] as? String {
-                    let exitCode = terminalExit["exit_code"] as? Int
-                    let signal = terminalExit["signal"] as? String
-                    logger.debug("Terminal \(terminalIdStr) exited: code=\(exitCode?.description ?? "nil"), signal=\(signal ?? "nil")")
-
-                    // Add exit status to tool call content
-                    updateToolCallInPlace(id: toolCallId) { updated in
+                    // Handle terminal_exit meta
+                    if let terminalExit = meta["terminal_exit"]?.value as? [String: Any] {
+                        let exitCode = terminalExit["exit_code"] as? Int
+                        let signal = terminalExit["signal"] as? String
                         let exitMessage = if let code = exitCode {
                             "Terminal exited with code \(code)"
                         } else if let sig = signal {
@@ -107,11 +116,11 @@ extension AgentSession {
                             "Terminal exited"
                         }
                         let exitContent = ToolCallContent.content(.text(TextContent(text: "\n\(exitMessage)\n")))
-                        updated.content = updated.content + [exitContent]
+                        terminalOutputContent.append(exitContent)
                     }
                 }
 
-                // O(1) dictionary lookup instead of O(n) array search
+                // Single update combining all changes (avoids state corruption)
                 updateToolCallInPlace(id: toolCallId) { updated in
                     updated.status = details.status ?? updated.status
                     updated.locations = details.locations ?? updated.locations
@@ -121,10 +130,14 @@ extension AgentSession {
                     if let newTitle = normalizedTitle(details.title) {
                         updated.title = newTitle
                     }
+
+                    // Merge all content: existing + terminal output + regular content
+                    var allContent = updated.content
+                    allContent.append(contentsOf: terminalOutputContent)
                     if let newContent = details.content {
-                        let merged = coalesceAdjacentTextBlocks(updated.content + newContent)
-                        updated.content = merged
+                        allContent.append(contentsOf: newContent)
                     }
+                    updated.content = coalesceAdjacentTextBlocks(allContent)
                 }
 
                 // Clean up activeTaskIds when Task completes
@@ -200,9 +213,6 @@ extension AgentSession {
                     // For now, just log them
                     logger.info("Config options updated: \(configOptions.count) options")
                 }
-            }
-        } catch {
-            logger.warning("Failed to parse session update: \(error.localizedDescription)\nRaw params: \(String(describing: notification.params))")
         }
     }
 

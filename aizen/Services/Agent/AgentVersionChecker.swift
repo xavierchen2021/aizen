@@ -107,6 +107,7 @@ actor AgentVersionChecker {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["npm", "view", cleanPackage, "version"]
+        process.environment = ShellEnvironment.loadUserShellEnvironment()
 
         let pipe = Pipe()
         let errorPipe = Pipe()
