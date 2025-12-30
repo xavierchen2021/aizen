@@ -47,9 +47,8 @@ actor AgentInstaller {
     }
 
     func isInstalled(_ agentName: String) -> Bool {
-        let agentPath = getAgentExecutablePath(agentName)
-        return FileManager.default.fileExists(atPath: agentPath) &&
-               FileManager.default.isExecutableFile(atPath: agentPath)
+        // 以实际可用的可执行文件为准（包含系统 PATH、登录 shell PATH、managed path 等）
+        return AgentRegistry.shared.validateAgent(named: agentName)
     }
 
     func canUpdate(_ metadata: AgentMetadata) -> Bool {
@@ -61,6 +60,16 @@ actor AgentInstaller {
         // Get the expected path for our managed installation
         let managedPath = getAgentExecutablePath(metadata.id)
         guard !managedPath.isEmpty else { return false }
+
+        // Check if agent is already installed at user-configured path
+        if let userPath = metadata.executablePath,
+           userPath != managedPath,
+           FileManager.default.fileExists(atPath: userPath) &&
+           FileManager.default.isExecutableFile(atPath: userPath) {
+            // User has configured a custom path that exists and is executable
+            // Don't offer update since we can't update user's custom installation
+            return false
+        }
 
         // Verify executable is actually at the managed path, not a user-defined location
         guard let actualPath = metadata.executablePath else { return false }
