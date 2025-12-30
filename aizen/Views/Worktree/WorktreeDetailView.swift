@@ -25,6 +25,7 @@ struct WorktreeDetailView: View {
     @AppStorage("showTerminalTab") private var showTerminalTab = true
     @AppStorage("showFilesTab") private var showFilesTab = true
     @AppStorage("showBrowserTab") private var showBrowserTab = true
+    @AppStorage("showTaskTab") private var showTaskTab = true
     @AppStorage("showOpenInApp") private var showOpenInApp = true
     @AppStorage("showGitStatus") private var showGitStatus = true
     @AppStorage("showXcodeBuild") private var showXcodeBuild = true
@@ -140,6 +141,8 @@ struct WorktreeDetailView: View {
                     worktree: worktree,
                     selectedSessionId: $viewModel.selectedBrowserSessionId
                 )
+            } else if selectedTab == "task" {
+                TasksTabView(worktree: worktree)
             }
         }
     }
@@ -166,6 +169,7 @@ struct WorktreeDetailView: View {
         case "terminal": return showTerminalTab
         case "files": return showFilesTab
         case "browser": return showBrowserTab
+        case "task": return showTaskTab
         default: return false
         }
     }

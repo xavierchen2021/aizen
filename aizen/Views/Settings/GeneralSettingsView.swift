@@ -207,6 +207,7 @@ struct GeneralSettingsView: View {
     @AppStorage("showTerminalTab") private var showTerminalTab = true
     @AppStorage("showFilesTab") private var showFilesTab = true
     @AppStorage("showBrowserTab") private var showBrowserTab = true
+    @AppStorage("showTaskTab") private var showTaskTab = true
 
     // Toolbar
     @AppStorage("showOpenInApp") private var showOpenInApp = true
@@ -414,6 +415,7 @@ struct GeneralSettingsView: View {
         case "terminal": return $showTerminalTab
         case "files": return $showFilesTab
         case "browser": return $showBrowserTab
+        case "task": return $showTaskTab
         default: return .constant(true)
         }
     }
@@ -424,6 +426,7 @@ struct GeneralSettingsView: View {
         case "terminal": return showTerminalTab
         case "files": return showFilesTab
         case "browser": return showBrowserTab
+        case "task": return showTaskTab
         default: return false
         }
     }
