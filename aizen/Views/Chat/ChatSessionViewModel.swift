@@ -205,7 +205,9 @@ class ChatSessionViewModel: ObservableObject {
                 }
                 Task { [self] in
                     do {
-                        try await existingSession.start(agentName: self.selectedAgent, workingDir: worktreePath)
+                        // Validate agent before starting session
+                        let validAgent = await AgentRouter().getValidDefaultAgent()
+                        try await existingSession.start(agentName: validAgent, workingDir: worktreePath)
                         await sendPendingMessageIfNeeded()
                     } catch {
                         self.logger.error("Failed to start session for \(self.selectedAgent): \(error.localizedDescription)")
@@ -227,8 +229,10 @@ class ChatSessionViewModel: ObservableObject {
         }
 
         Task {
+            // Validate agent before creating session
+            let validAgent = await AgentRouter().getValidDefaultAgent()
             // Create a dedicated AgentSession for this chat session to avoid cross-tab interference
-            let newSession = AgentSession(agentName: self.selectedAgent, workingDirectory: worktreePath)
+            let newSession = AgentSession(agentName: validAgent, workingDirectory: worktreePath)
             let worktreeName = worktree.branch ?? "Chat"
             sessionManager.setAgentSession(newSession, for: sessionId, worktreeName: worktreeName)
             currentAgentSession = newSession
@@ -249,11 +253,11 @@ class ChatSessionViewModel: ObservableObject {
 
             if !newSession.isActive {
                 do {
-                    try await newSession.start(agentName: self.selectedAgent, workingDir: worktreePath)
+                    try await newSession.start(agentName: validAgent, workingDir: worktreePath)
                     // Check for pending message after session starts
                     await sendPendingMessageIfNeeded()
                 } catch {
-                    self.logger.error("Failed to start new session for \(self.selectedAgent): \(error.localizedDescription)")
+                    self.logger.error("Failed to start new session for \(validAgent): \(error.localizedDescription)")
                     // Session will show auth dialog or setup dialog automatically via needsAuthentication/needsAgentSetup
                 }
             } else {
@@ -379,10 +383,11 @@ class ChatSessionViewModel: ObservableObject {
             previousToolCallIds = []
             timelineItems = []
 
-            // Restart the session
+            // Restart the session with validated agent
             let worktreePath = worktree.path ?? ""
+            let validAgent = await AgentRouter().getValidDefaultAgent()
             do {
-                try await agentSession.start(agentName: selectedAgent, workingDir: worktreePath)
+                try await agentSession.start(agentName: validAgent, workingDir: worktreePath)
             } catch {
                 logger.error("Failed to restart session: \(error.localizedDescription)")
             }

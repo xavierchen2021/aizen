@@ -476,12 +476,12 @@ extension Ghostty {
                 if !string.isEmpty {
                     // Apply copy transformations from settings
                     let settings = TerminalCopySettings(
-                        trimTrailingWhitespace: UserDefaults.standard.object(forKey: "terminalCopyTrimTrailingWhitespace") as? Bool ?? true,
-                        collapseBlankLines: UserDefaults.standard.bool(forKey: "terminalCopyCollapseBlankLines"),
-                        stripShellPrompts: UserDefaults.standard.bool(forKey: "terminalCopyStripShellPrompts"),
-                        flattenCommands: UserDefaults.standard.bool(forKey: "terminalCopyFlattenCommands"),
-                        removeBoxDrawing: UserDefaults.standard.bool(forKey: "terminalCopyRemoveBoxDrawing"),
-                        stripAnsiCodes: UserDefaults.standard.object(forKey: "terminalCopyStripAnsiCodes") as? Bool ?? true
+                        trimTrailingWhitespace: UserDefaults.app.object(forKey: "terminalCopyTrimTrailingWhitespace") as? Bool ?? true,
+                        collapseBlankLines: UserDefaults.app.bool(forKey: "terminalCopyCollapseBlankLines"),
+                        stripShellPrompts: UserDefaults.app.bool(forKey: "terminalCopyStripShellPrompts"),
+                        flattenCommands: UserDefaults.app.bool(forKey: "terminalCopyFlattenCommands"),
+                        removeBoxDrawing: UserDefaults.app.bool(forKey: "terminalCopyRemoveBoxDrawing"),
+                        stripAnsiCodes: UserDefaults.app.object(forKey: "terminalCopyStripAnsiCodes") as? Bool ?? true
                     )
                     string = TerminalTextCleaner.cleanText(string, settings: settings)
 

@@ -71,12 +71,12 @@ struct AgentListItemView: View {
 
                             // If we're disabling the current default agent, pick a new default
                             if wasEnabled && !newValue {
-                                let defaultAgent = UserDefaults.standard.string(forKey: "defaultACPAgent") ?? "claude"
+                                let defaultAgent = UserDefaults.app.string(forKey: "defaultACPAgent") ?? "claude"
                                 if defaultAgent == metadata.id {
                                     // Find first enabled agent that's not this one
                                     if let newDefault = await AgentRegistry.shared.getEnabledAgents().first {
                                         await MainActor.run {
-                                            UserDefaults.standard.set(newDefault.id, forKey: "defaultACPAgent")
+                                            UserDefaults.app.set(newDefault.id, forKey: "defaultACPAgent")
                                         }
                                     }
                                 }

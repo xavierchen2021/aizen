@@ -106,13 +106,14 @@ class TabConfigurationManager: ObservableObject {
     }
 
     /// Returns the first visible tab from the configured order
-    func firstVisibleTab(showChat: Bool, showTerminal: Bool, showFiles: Bool, showBrowser: Bool) -> String {
+    func firstVisibleTab(showChat: Bool, showTerminal: Bool, showFiles: Bool, showBrowser: Bool, showTasks: Bool) -> String {
         for tab in tabOrder {
             switch tab.id {
             case "chat" where showChat: return "chat"
             case "terminal" where showTerminal: return "terminal"
             case "files" where showFiles: return "files"
             case "browser" where showBrowser: return "browser"
+            case "tasks" where showTasks: return "tasks"
             default: continue
             }
         }
@@ -120,13 +121,14 @@ class TabConfigurationManager: ObservableObject {
     }
 
     /// Returns the effective default tab, accounting for visibility
-    func effectiveDefaultTab(showChat: Bool, showTerminal: Bool, showFiles: Bool, showBrowser: Bool) -> String {
+    func effectiveDefaultTab(showChat: Bool, showTerminal: Bool, showFiles: Bool, showBrowser: Bool, showTasks: Bool) -> String {
         let isVisible: Bool
         switch defaultTab {
         case "chat": isVisible = showChat
         case "terminal": isVisible = showTerminal
         case "files": isVisible = showFiles
         case "browser": isVisible = showBrowser
+        case "tasks": isVisible = showTasks
         default: isVisible = false
         }
 
@@ -135,6 +137,6 @@ class TabConfigurationManager: ObservableObject {
         }
 
         // Default tab is hidden, fall back to first visible
-        return firstVisibleTab(showChat: showChat, showTerminal: showTerminal, showFiles: showFiles, showBrowser: showBrowser)
+        return firstVisibleTab(showChat: showChat, showTerminal: showTerminal, showFiles: showFiles, showBrowser: showBrowser, showTasks: showTasks)
     }
 }

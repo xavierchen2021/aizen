@@ -13,11 +13,27 @@ class AgentRouter: ObservableObject {
 
     var defaultAgent: String {
         get {
-            UserDefaults.standard.string(forKey: defaultAgentKey) ?? "claude"
+            UserDefaults.app.string(forKey: defaultAgentKey) ?? "claude"
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: defaultAgentKey)
+            UserDefaults.app.set(newValue, forKey: defaultAgentKey)
         }
+    }
+
+    /// Get a valid default agent, falling back to "claude" if the configured default doesn't exist
+    @MainActor
+    func getValidDefaultAgent() async -> String {
+        let configuredDefault = defaultAgent
+        
+        // Check if configured default agent exists and is enabled
+        if let metadata = AgentRegistry.shared.getMetadata(for: configuredDefault),
+           metadata.isEnabled {
+            return configuredDefault
+        }
+        
+        // If configured default is invalid, reset to "claude" and return it
+        defaultAgent = "claude"
+        return "claude"
     }
 
     private var metadataObserver: NSObjectProtocol?

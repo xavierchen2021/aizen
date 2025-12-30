@@ -15,6 +15,7 @@ cd "$PROJECT_DIR"
 CONFIGURATION="Release"
 ARCH="arm64"
 CLEAN=false
+SCHEME="aizen"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -27,6 +28,10 @@ while [[ $# -gt 0 ]]; do
             CONFIGURATION="Release"
             shift
             ;;
+        -n|--nightly)
+            SCHEME="aizen nightly"
+            shift
+            ;;
         -c|--clean)
             CLEAN=true
             shift
@@ -37,13 +42,16 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  -d, --debug     Build Debug configuration (default: Release)"
             echo "  -r, --release   Build Release configuration"
+            echo "  -n, --nightly   Build nightly/development version (default: release)"
             echo "  -c, --clean     Clean before building"
             echo "  -h, --help      Show this help message"
             echo ""
             echo "Examples:"
-            echo "  $0                    # Build Release version"
-            echo "  $0 --debug            # Build Debug version"
-            echo "  $0 --release --clean  # Clean and build Release"
+            echo "  $0                         # Build Release version"
+            echo "  $0 --debug                 # Build Debug version"
+            echo "  $0 --nightly               # Build nightly Release version"
+            echo "  $0 --nightly --debug       # Build nightly Debug version"
+            echo "  $0 --release --clean       # Clean and build Release"
             exit 0
             ;;
         *)
@@ -54,7 +62,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Determine app name and version type
+if [[ "$SCHEME" == "aizen nightly" ]]; then
+    VERSION_TYPE="nightly (development)"
+    APP_NAME="aizen nightly.app"
+else
+    VERSION_TYPE="release"
+    APP_NAME="aizen.app"
+fi
+
 echo -e "${GREEN}=== Building aizen ===${NC}"
+echo "Version: $VERSION_TYPE"
 echo "Configuration: $CONFIGURATION"
 echo "Architecture: $ARCH"
 echo ""
@@ -62,27 +80,27 @@ echo ""
 # Clean if requested
 if [ "$CLEAN" = true ]; then
     echo -e "${YELLOW}Cleaning build folder...${NC}"
-    xcodebuild clean -scheme aizen -configuration "$CONFIGURATION"
+    xcodebuild clean -scheme "$SCHEME" -configuration "$CONFIGURATION"
     echo ""
 fi
 
 # Build
 echo -e "${YELLOW}Building...${NC}"
 xcodebuild \
-    -scheme aizen \
+    -scheme "$SCHEME" \
     -configuration "$CONFIGURATION" \
     -arch "$ARCH" \
-    build
+    build 2>&1 | grep -E "error:|warning:|failed|succeeded"
 
 # Check if build succeeded
-if [ $? -eq 0 ]; then
-    APP_PATH="$PROJECT_DIR/build/$CONFIGURATION/aizen.app"
+if [ ${PIPESTATUS[0]} -eq 0 ]; then
+    APP_PATH="$PROJECT_DIR/build/$CONFIGURATION/$APP_NAME"
     echo ""
     echo -e "${GREEN}✓ Build succeeded!${NC}"
     echo -e "Output: ${YELLOW}$APP_PATH${NC}"
     echo ""
     echo "To run the app:"
-    echo -e "  ${YELLOW}open ./build/$CONFIGURATION/aizen.app${NC}"
+    echo -e "  ${YELLOW}open ./build/$CONFIGURATION/$APP_NAME${NC}"
 else
     echo ""
     echo -e "${RED}✗ Build failed!${NC}"

@@ -44,7 +44,7 @@ class PostCreateTemplateManager: ObservableObject {
     }
 
     private func loadTemplates() {
-        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey) else { return }
+        guard let data = UserDefaults.app.data(forKey: userDefaultsKey) else { return }
         do {
             customTemplates = try JSONDecoder().decode([PostCreateTemplate].self, from: data)
         } catch {
@@ -55,7 +55,7 @@ class PostCreateTemplateManager: ObservableObject {
     private func saveTemplates() {
         do {
             let data = try JSONEncoder().encode(customTemplates)
-            UserDefaults.standard.set(data, forKey: userDefaultsKey)
+            UserDefaults.app.set(data, forKey: userDefaultsKey)
         } catch {
             logger.error("Failed to save custom templates: \(error.localizedDescription)")
         }

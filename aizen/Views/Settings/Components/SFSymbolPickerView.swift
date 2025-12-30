@@ -146,7 +146,7 @@ class RecentSymbolsManager: ObservableObject {
     }
 
     private func loadRecent() {
-        recentSymbols = UserDefaults.standard.stringArray(forKey: key) ?? []
+        recentSymbols = UserDefaults.app.stringArray(forKey: key) ?? []
     }
 
     func addRecent(_ symbol: String) {
@@ -157,7 +157,7 @@ class RecentSymbolsManager: ObservableObject {
             recent = Array(recent.prefix(maxRecent))
         }
         recentSymbols = recent
-        UserDefaults.standard.set(recent, forKey: key)
+        UserDefaults.app.set(recent, forKey: key)
     }
 }
 

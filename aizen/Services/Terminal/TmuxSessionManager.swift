@@ -45,7 +45,7 @@ actor TmuxSessionManager {
         let configFile = aizenDir.appendingPathComponent("tmux.conf")
 
         // Get theme-based mode style for selection highlighting
-        let themeName = UserDefaults.standard.string(forKey: "terminalThemeName") ?? "Aizen Dark"
+        let themeName = UserDefaults.app.string(forKey: "terminalThemeName") ?? "Aizen Dark"
         let modeStyle = GhosttyThemeParser.loadTmuxModeStyle(named: themeName)
 
         // Always overwrite to ensure latest config

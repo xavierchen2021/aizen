@@ -16,17 +16,20 @@ struct WorktreeTabState: Codable {
     var terminalSessionId: UUID?
     var browserSessionId: UUID?
     var fileSessionId: UUID?
+    var taskSessionId: UUID?
 
     init(viewType: String = "chat",
          chatSessionId: UUID? = nil,
          terminalSessionId: UUID? = nil,
          browserSessionId: UUID? = nil,
-         fileSessionId: UUID? = nil) {
+         fileSessionId: UUID? = nil,
+         taskSessionId: UUID? = nil) {
         self.viewType = viewType
         self.chatSessionId = chatSessionId
         self.terminalSessionId = terminalSessionId
         self.browserSessionId = browserSessionId
         self.fileSessionId = fileSessionId
+        self.taskSessionId = taskSessionId
     }
 }
 
@@ -84,6 +87,8 @@ class WorktreeTabStateManager: ObservableObject {
             state.browserSessionId = sessionId
         case "files":
             state.fileSessionId = sessionId
+        case "tasks":
+            state.taskSessionId = sessionId
         default:
             break
         }
@@ -105,6 +110,8 @@ class WorktreeTabStateManager: ObservableObject {
             return state.browserSessionId
         case "files":
             return state.fileSessionId
+        case "tasks":
+            return state.taskSessionId
         default:
             return nil
         }

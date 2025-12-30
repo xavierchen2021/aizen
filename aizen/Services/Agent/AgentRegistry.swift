@@ -254,7 +254,8 @@ actor AgentRegistry {
                 "\(home.path)/.claude/local/node_modules/.bin/claude-code-acp",
                 "\(home.path)/.npm/_npx/*/node_modules/.bin/claude-code-acp",
                 "/usr/local/bin/claude-code-acp",
-                "\(home.path)/.local/bin/claude-code-acp"
+                "\(home.path)/.local/bin/claude-code-acp",
+                "\(home.path)/.nvm/versions/node/*/bin/claude-code-acp"
             ],
             "codex": [
                 "\(home.path)/.npm/_npx/*/node_modules/.bin/codex-acp",

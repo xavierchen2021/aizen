@@ -115,22 +115,30 @@ struct WorktreeSessionManager {
     func createNewChatSession(withAgent agentId: String?) {
         guard let context = worktree.managedObjectContext else { return }
 
-        let session = ChatSession(context: context)
-        session.id = UUID()
-        let agent = agentId ?? AgentRouter().defaultAgent
-        let displayName = AgentRegistry.shared.getMetadata(for: agent)?.name ?? agent.capitalized
-        session.title = displayName
-        session.agentName = agent
-        session.createdAt = Date()
-        session.worktree = worktree
-
-        do {
-            try context.save()
-            DispatchQueue.main.async {
-                viewModel.selectedChatSessionId = session.id
+        Task {
+            let agent: String
+            if let agentId = agentId {
+                agent = agentId
+            } else {
+                agent = await AgentRouter().getValidDefaultAgent()
             }
-        } catch {
-            logger.error("Failed to create chat session: \(error.localizedDescription)")
+            
+            let session = ChatSession(context: context)
+            session.id = UUID()
+            let displayName = AgentRegistry.shared.getMetadata(for: agent)?.name ?? agent.capitalized
+            session.title = displayName
+            session.agentName = agent
+            session.createdAt = Date()
+            session.worktree = worktree
+
+            do {
+                try context.save()
+                DispatchQueue.main.async {
+                    self.viewModel.selectedChatSessionId = session.id
+                }
+            } catch {
+                logger.error("Failed to create chat session: \(error.localizedDescription)")
+            }
         }
     }
 

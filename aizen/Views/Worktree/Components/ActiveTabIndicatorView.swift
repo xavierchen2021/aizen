@@ -52,6 +52,9 @@ struct ActiveTabIndicatorView: View {
         case "files":
             return ("folder", "Files")
 
+        case "tasks":
+            return ("checklist", "Tasks")
+
         default:
             return nil
         }

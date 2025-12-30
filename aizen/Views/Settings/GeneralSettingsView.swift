@@ -207,6 +207,7 @@ struct GeneralSettingsView: View {
     @AppStorage("showTerminalTab") private var showTerminalTab = true
     @AppStorage("showFilesTab") private var showFilesTab = true
     @AppStorage("showBrowserTab") private var showBrowserTab = true
+    @AppStorage("showTasksTab") private var showTasksTab = true
 
     // Toolbar
     @AppStorage("showOpenInApp") private var showOpenInApp = true
@@ -414,6 +415,7 @@ struct GeneralSettingsView: View {
         case "terminal": return $showTerminalTab
         case "files": return $showFilesTab
         case "browser": return $showBrowserTab
+        case "tasks": return $showTasksTab
         default: return .constant(true)
         }
     }
@@ -424,6 +426,7 @@ struct GeneralSettingsView: View {
         case "terminal": return showTerminalTab
         case "files": return showFilesTab
         case "browser": return showBrowserTab
+        case "tasks": return showTasksTab
         default: return false
         }
     }
@@ -431,7 +434,7 @@ struct GeneralSettingsView: View {
     // MARK: - Language
 
     private func loadCurrentLanguage() {
-        if let languages = UserDefaults.standard.array(forKey: "AppleLanguages") as? [String],
+        if let languages = UserDefaults.app.array(forKey: "AppleLanguages") as? [String],
            let first = languages.first {
             if first.hasPrefix("zh") {
                 selectedLanguage = .chinese
@@ -451,13 +454,13 @@ struct GeneralSettingsView: View {
     private func applyLanguage(_ language: AppLanguage) {
         switch language {
         case .system:
-            UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+            UserDefaults.app.removeObject(forKey: "AppleLanguages")
         case .english:
-            UserDefaults.standard.set(["en"], forKey: "AppleLanguages")
+            UserDefaults.app.set(["en"], forKey: "AppleLanguages")
         case .chinese:
-            UserDefaults.standard.set(["zh-Hans"], forKey: "AppleLanguages")
+            UserDefaults.app.set(["zh-Hans"], forKey: "AppleLanguages")
         }
-        UserDefaults.standard.synchronize()
+        UserDefaults.app.synchronize()
         showingRestartAlert = true
     }
 
