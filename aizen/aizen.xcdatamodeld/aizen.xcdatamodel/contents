@@ -1,108 +1,108 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="1" systemVersion="11A491" minimumToolsVersion="Automatic" sourceLanguage="Swift" usedWithCloudKit="false" userDefinedModelVersionIdentifier="">
-    <entity name="Workspace" representedClassName="Workspace" syncable="YES" codeGenerationType="class">
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="24512" systemVersion="25B78" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
+    <entity name="BrowserSession" representedClassName="BrowserSession" syncable="YES" codeGenerationType="class">
+        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
-        <attribute name="name" attributeType="String"/>
         <attribute name="order" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
-        <attribute name="colorHex" optional="YES" attributeType="String"/>
-        <attribute name="lastSelectedRepositoryId" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
-        <relationship name="repositories" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="Repository" inverseName="workspace" inverseEntity="Repository"/>
-    </entity>
-    <entity name="Repository" representedClassName="Repository" syncable="YES" codeGenerationType="class">
-        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
-        <attribute name="name" attributeType="String"/>
-        <attribute name="path" attributeType="String"/>
-        <attribute name="lastUpdated" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
-        <attribute name="status" optional="YES" attributeType="String" defaultValueString="active"/>
-        <attribute name="note" optional="YES" attributeType="String"/>
-        <attribute name="postCreateActionsData" optional="YES" attributeType="Binary"/>
-        <relationship name="workspace" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Workspace" inverseName="repositories" inverseEntity="Workspace"/>
-        <relationship name="worktrees" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="Worktree" inverseName="repository" inverseEntity="Worktree"/>
-    </entity>
-    <entity name="Worktree" representedClassName="Worktree" syncable="YES" codeGenerationType="class">
-        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
-        <attribute name="path" attributeType="String"/>
-        <attribute name="branch" attributeType="String"/>
-        <attribute name="isPrimary" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
-        <attribute name="lastAccessed" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
-        <attribute name="selectedTab" optional="YES" attributeType="String"/>
-        <attribute name="status" optional="YES" attributeType="String" defaultValueString="active"/>
-        <attribute name="note" optional="YES" attributeType="String"/>
-        <relationship name="repository" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Repository" inverseName="worktrees" inverseEntity="Repository"/>
-        <relationship name="terminalSessions" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="TerminalSession" inverseName="worktree" inverseEntity="TerminalSession"/>
-        <relationship name="chatSessions" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="ChatSession" inverseName="worktree" inverseEntity="ChatSession"/>
-        <relationship name="fileBrowserSession" optional="YES" maxCount="1" deletionRule="Cascade" destinationEntity="FileBrowserSession" inverseName="worktree" inverseEntity="FileBrowserSession"/>
-        <relationship name="browserSessions" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="BrowserSession" inverseName="worktree" inverseEntity="BrowserSession"/>
-    </entity>
-    <entity name="TerminalSession" representedClassName="TerminalSession" syncable="YES" codeGenerationType="class">
-        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="title" optional="YES" attributeType="String"/>
-        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
-        <attribute name="splitLayout" optional="YES" attributeType="String"/>
-        <attribute name="focusedPaneId" optional="YES" attributeType="String"/>
-        <attribute name="initialCommand" optional="YES" attributeType="String"/>
-        <relationship name="worktree" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Worktree" inverseName="terminalSessions" inverseEntity="Worktree"/>
-    </entity>
-    <entity name="ChatSession" representedClassName="ChatSession" syncable="YES" codeGenerationType="class">
-        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
-        <attribute name="title" optional="YES" attributeType="String"/>
-        <attribute name="agentName" attributeType="String"/>
-        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
-        <attribute name="lastMessageAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
-        <relationship name="worktree" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Worktree" inverseName="chatSessions" inverseEntity="Worktree"/>
-        <relationship name="messages" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="ChatMessage" inverseName="session" inverseEntity="ChatMessage"/>
+        <attribute name="url" attributeType="String"/>
+        <relationship name="worktree" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Worktree" inverseName="browserSessions" inverseEntity="Worktree"/>
     </entity>
     <entity name="ChatConversation" representedClassName="ChatConversation" syncable="YES" codeGenerationType="class">
-        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="lastMessageAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <relationship name="messages" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="ChatMessage" inverseName="conversation" inverseEntity="ChatMessage"/>
     </entity>
     <entity name="ChatMessage" representedClassName="ChatMessage" syncable="YES" codeGenerationType="class">
-        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
-        <attribute name="timestamp" attributeType="Date" usesScalarValueType="NO"/>
-        <attribute name="role" attributeType="String"/>
         <attribute name="agentName" optional="YES" attributeType="String"/>
         <attribute name="contentJSON" attributeType="String"/>
-        <relationship name="session" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="ChatSession" inverseName="messages" inverseEntity="ChatSession"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="role" attributeType="String"/>
+        <attribute name="timestamp" attributeType="Date" usesScalarValueType="NO"/>
         <relationship name="conversation" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="ChatConversation" inverseName="messages" inverseEntity="ChatConversation"/>
+        <relationship name="session" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="ChatSession" inverseName="messages" inverseEntity="ChatSession"/>
         <relationship name="toolCalls" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="ToolCallRecord" inverseName="message" inverseEntity="ToolCallRecord"/>
     </entity>
-    <entity name="ToolCallRecord" representedClassName="ToolCallRecord" syncable="YES" codeGenerationType="class">
-        <attribute name="id" attributeType="String"/>
-        <attribute name="title" attributeType="String"/>
-        <attribute name="kind" attributeType="String"/>
-        <attribute name="status" attributeType="String"/>
-        <attribute name="contentJSON" attributeType="String"/>
-        <attribute name="timestamp" attributeType="Date" usesScalarValueType="NO"/>
-        <relationship name="message" maxCount="1" deletionRule="Nullify" destinationEntity="ChatMessage" inverseName="toolCalls" inverseEntity="ChatMessage"/>
+    <entity name="ChatSession" representedClassName="ChatSession" syncable="YES" codeGenerationType="class">
+        <attribute name="agentName" attributeType="String"/>
+        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="lastMessageAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="title" optional="YES" attributeType="String"/>
+        <relationship name="messages" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="ChatMessage" inverseName="session" inverseEntity="ChatMessage"/>
+        <relationship name="worktree" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Worktree" inverseName="chatSessions" inverseEntity="Worktree"/>
     </entity>
     <entity name="FileBrowserSession" representedClassName="FileBrowserSession" syncable="YES" codeGenerationType="class">
-        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="currentPath" optional="YES" attributeType="String"/>
         <attribute name="expandedPaths" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromData" customClassName="[String]"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
         <attribute name="openFilesPaths" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromData" customClassName="[String]"/>
         <attribute name="selectedFilePath" optional="YES" attributeType="String"/>
         <relationship name="worktree" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Worktree" inverseName="fileBrowserSession" inverseEntity="Worktree"/>
     </entity>
-    <entity name="BrowserSession" representedClassName="BrowserSession" syncable="YES" codeGenerationType="class">
+    <entity name="Repository" representedClassName="Repository" syncable="YES" codeGenerationType="class">
         <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
-        <attribute name="url" attributeType="String"/>
-        <attribute name="title" optional="YES" attributeType="String"/>
-        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
-        <attribute name="order" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
-        <relationship name="worktree" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Worktree" inverseName="browserSessions" inverseEntity="Worktree"/>
+        <attribute name="lastUpdated" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="name" attributeType="String"/>
+        <attribute name="note" optional="YES" attributeType="String"/>
+        <attribute name="path" attributeType="String"/>
+        <attribute name="postCreateActionsData" optional="YES" attributeType="Binary"/>
+        <attribute name="status" optional="YES" attributeType="String" defaultValueString="active"/>
+        <relationship name="workspace" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Workspace" inverseName="repositories" inverseEntity="Workspace"/>
+        <relationship name="worktrees" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="Worktree" inverseName="repository" inverseEntity="Worktree"/>
     </entity>
-    <elements>
-        <element name="Workspace" positionX="-400" positionY="-18" width="128" height="104"/>
-        <element name="Repository" positionX="-200" positionY="-18" width="128" height="119"/>
-        <element name="Worktree" positionX="0" positionY="-18" width="128" height="149"/>
-        <element name="TerminalSession" positionX="200" positionY="-18" width="128" height="89"/>
-        <element name="ChatSession" positionX="200" positionY="100" width="128" height="134"/>
-        <element name="ChatConversation" positionX="400" positionY="-18" width="128" height="89"/>
-        <element name="ChatMessage" positionX="600" positionY="-18" width="128" height="164"/>
-        <element name="ToolCallRecord" positionX="800" positionY="-18" width="128" height="149"/>
-        <element name="FileBrowserSession" positionX="200" positionY="220" width="128" height="74"/>
-        <element name="BrowserSession" positionX="200" positionY="320" width="128" height="119"/>
-    </elements>
+    <entity name="TaskItem" representedClassName="TaskItem" syncable="YES" codeGenerationType="class">
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="title" attributeType="String"/>
+        <attribute name="taskDescription" optional="YES" attributeType="String"/>
+        <attribute name="resources" optional="YES" attributeType="String"/>
+        <attribute name="customPrefix" optional="YES" attributeType="String"/>
+        <attribute name="markdownTemplate" optional="YES" attributeType="String"/>
+        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="updatedAt" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="worktree" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Worktree" inverseName="tasks" inverseEntity="Worktree"/>
+    </entity>
+    <entity name="TerminalSession" representedClassName="TerminalSession" syncable="YES" codeGenerationType="class">
+        <attribute name="createdAt" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="focusedPaneId" optional="YES" attributeType="String"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="initialCommand" optional="YES" attributeType="String"/>
+        <attribute name="splitLayout" optional="YES" attributeType="String"/>
+        <attribute name="title" optional="YES" attributeType="String"/>
+        <relationship name="worktree" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Worktree" inverseName="terminalSessions" inverseEntity="Worktree"/>
+    </entity>
+    <entity name="ToolCallRecord" representedClassName="ToolCallRecord" syncable="YES" codeGenerationType="class">
+        <attribute name="contentJSON" attributeType="String"/>
+        <attribute name="id" attributeType="String"/>
+        <attribute name="kind" attributeType="String"/>
+        <attribute name="status" attributeType="String"/>
+        <attribute name="timestamp" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="title" attributeType="String"/>
+        <relationship name="message" maxCount="1" deletionRule="Nullify" destinationEntity="ChatMessage" inverseName="toolCalls" inverseEntity="ChatMessage"/>
+    </entity>
+    <entity name="Workspace" representedClassName="Workspace" syncable="YES" codeGenerationType="class">
+        <attribute name="colorHex" optional="YES" attributeType="String"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="lastSelectedRepositoryId" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="name" attributeType="String"/>
+        <attribute name="order" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <relationship name="repositories" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="Repository" inverseName="workspace" inverseEntity="Repository"/>
+    </entity>
+    <entity name="Worktree" representedClassName="Worktree" syncable="YES" codeGenerationType="class">
+        <attribute name="branch" attributeType="String"/>
+        <attribute name="id" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="isPrimary" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="lastAccessed" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="note" optional="YES" attributeType="String"/>
+        <attribute name="path" attributeType="String"/>
+        <attribute name="selectedTab" optional="YES" attributeType="String"/>
+        <attribute name="status" optional="YES" attributeType="String" defaultValueString="active"/>
+        <relationship name="browserSessions" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="BrowserSession" inverseName="worktree" inverseEntity="BrowserSession"/>
+        <relationship name="chatSessions" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="ChatSession" inverseName="worktree" inverseEntity="ChatSession"/>
+        <relationship name="fileBrowserSession" optional="YES" maxCount="1" deletionRule="Cascade" destinationEntity="FileBrowserSession" inverseName="worktree" inverseEntity="FileBrowserSession"/>
+        <relationship name="repository" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Repository" inverseName="worktrees" inverseEntity="Repository"/>
+        <relationship name="tasks" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="TaskItem" inverseName="worktree" inverseEntity="TaskItem"/>
+        <relationship name="terminalSessions" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="TerminalSession" inverseName="worktree" inverseEntity="TerminalSession"/>
+    </entity>
 </model>
