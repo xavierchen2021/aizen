@@ -24,7 +24,7 @@ class RepositoryFileSystemManager {
     /// Opens a Terminal window at the specified path
     /// - Parameter path: The directory path to open in Terminal
     func openInTerminal(_ path: String) {
-        guard let bundleId = UserDefaults.app.string(forKey: "defaultTerminalBundleId") else {
+        guard let bundleId = UserDefaults.standard.string(forKey: "defaultTerminalBundleId") else {
             // No preference set, use system default
             NSWorkspace.shared.open(URL(fileURLWithPath: path))
             return
@@ -45,11 +45,11 @@ class RepositoryFileSystemManager {
     /// Uses the default editor from UserDefaults (key: "defaultEditor").
     /// Falls back to Finder if the editor command fails.
     func openInEditor(_ path: String) {
-        let useCliEditor = UserDefaults.app.bool(forKey: "useCliEditor")
+        let useCliEditor = UserDefaults.standard.bool(forKey: "useCliEditor")
 
         // Use CLI command if toggled on
         if useCliEditor {
-            let editor = UserDefaults.app.string(forKey: "defaultEditor") ?? "code"
+            let editor = UserDefaults.standard.string(forKey: "defaultEditor") ?? "code"
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             task.arguments = [editor, path]
@@ -63,7 +63,7 @@ class RepositoryFileSystemManager {
             return
         }
 
-        guard let bundleId = UserDefaults.app.string(forKey: "defaultEditorBundleId") else {
+        guard let bundleId = UserDefaults.standard.string(forKey: "defaultEditorBundleId") else {
             // No preference set, use system default
             NSWorkspace.shared.open(URL(fileURLWithPath: path))
             return

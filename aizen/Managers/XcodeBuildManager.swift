@@ -41,8 +41,8 @@ class XcodeBuildManager: ObservableObject {
     // MARK: - Persistence
 
     private var lastDestinationId: String {
-        get { UserDefaults.app.string(forKey: "xcodeLastDestinationId") ?? "" }
-        set { UserDefaults.app.set(newValue, forKey: "xcodeLastDestinationId") }
+        get { UserDefaults.standard.string(forKey: "xcodeLastDestinationId") ?? "" }
+        set { UserDefaults.standard.set(newValue, forKey: "xcodeLastDestinationId") }
     }
 
     private var projectSchemeKey: String {
@@ -88,9 +88,9 @@ class XcodeBuildManager: ObservableObject {
 
             // Load cached destinations off main actor (JSON decoding)
             let cachedDestinations = self.loadCachedDestinationsOffMainActor()
-            let lastDestId = UserDefaults.app.string(forKey: "xcodeLastDestinationId") ?? ""
+            let lastDestId = UserDefaults.standard.string(forKey: "xcodeLastDestinationId") ?? ""
             let schemeKey = "xcodeScheme_\(project.path.hashValue)"
-            let savedScheme = UserDefaults.app.string(forKey: schemeKey)
+            let savedScheme = UserDefaults.standard.string(forKey: schemeKey)
 
             // Update UI state on main actor
             await MainActor.run {
@@ -135,7 +135,7 @@ class XcodeBuildManager: ObservableObject {
 
     /// Load cached destinations off main actor to avoid UI freeze
     private func loadCachedDestinationsOffMainActor() -> [DestinationType: [XcodeDestination]]? {
-        guard let data = UserDefaults.app.data(forKey: destinationsCacheKey),
+        guard let data = UserDefaults.standard.data(forKey: destinationsCacheKey),
               let cached = try? JSONDecoder().decode(CachedDestinations.self, from: data) else {
             return nil
         }
@@ -159,7 +159,7 @@ class XcodeBuildManager: ObservableObject {
         let cached = CachedDestinations(destinations: allDestinations)
 
         if let data = try? JSONEncoder().encode(cached) {
-            UserDefaults.app.set(data, forKey: destinationsCacheKey)
+            UserDefaults.standard.set(data, forKey: destinationsCacheKey)
         }
     }
 
@@ -207,7 +207,7 @@ class XcodeBuildManager: ObservableObject {
 
     func selectScheme(_ scheme: String) {
         selectedScheme = scheme
-        UserDefaults.app.set(scheme, forKey: projectSchemeKey)
+        UserDefaults.standard.set(scheme, forKey: projectSchemeKey)
     }
 
     // MARK: - Destination Selection

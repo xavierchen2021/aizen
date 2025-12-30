@@ -27,87 +27,71 @@ enum ClaudeUsageFetcher {
         var quota: [UsageQuotaWindow] = []
         var user: UsageUserIdentity?
 
-        // Try to load OAuth credentials, but don't fail if they're not found
-        // (user might be using custom API key instead)
         do {
             let creds = try ClaudeOAuthCredentialsStore.load()
             if creds.isExpired {
-                notes.append("Claude OAuth token expired. Run 'claude' to re-authenticate for usage stats.")
-            } else {
-                // Credentials found and valid, fetch OAuth usage
-                do {
-                    let usage = try await ClaudeOAuthUsageFetcher.fetchUsage(accessToken: creds.accessToken)
-                    let statsigIdentity = loadStatsigIdentity()
-
-                    if let window = makeWindow(title: "Session (5h)", window: usage.fiveHour, windowMinutes: 5 * 60) {
-                        quota.append(window)
-                    }
-                    if let window = makeWindow(title: "Weekly", window: usage.sevenDay, windowMinutes: 7 * 24 * 60) {
-                        quota.append(window)
-                    }
-                    if let window = makeWindow(
-                        title: "Weekly (Sonnet/Opus)",
-                        window: usage.sevenDaySonnet ?? usage.sevenDayOpus,
-                        windowMinutes: 7 * 24 * 60
-                    ) {
-                        quota.append(window)
-                    }
-
-                    if let extra = usage.extraUsage, extra.isEnabled == true {
-                        let used = extra.usedCredits
-                        let limit = extra.monthlyLimit
-                        let remaining = (used != nil && limit != nil) ? (limit! - used!) : nil
-                        var usedPercent = extra.utilization
-                        if usedPercent == nil, let used, let limit, limit > 0 {
-                            usedPercent = (used / limit) * 100
-                        }
-                        let unit = (extra.currency?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
-                            ?? "USD"
-                        quota.append(
-                            UsageQuotaWindow(
-                                title: "Extra usage",
-                                usedPercent: usedPercent,
-                                usedAmount: used,
-                                remainingAmount: remaining,
-                                limitAmount: limit,
-                                unit: unit
-                            )
-                        )
-                    }
-
-                    let email = creds.email ?? parseJWTEmail(creds.idToken) ?? parseJWTEmail(creds.accessToken)
-                    let organization = creds.organization
-                        ?? parseJWTOrganization(creds.idToken)
-                        ?? statsigIdentity?.organizationID
-                    let subscription = creds.subscriptionType ?? statsigIdentity?.subscriptionType
-                    user = UsageUserIdentity(
-                        email: email,
-                        organization: organization,
-                        plan: inferPlan(rateLimitTier: creds.rateLimitTier, subscriptionType: subscription)
-                    )
-
-                    if quota.isEmpty {
-                        notes.append("No Claude subscription usage returned by the OAuth API.")
-                    }
-                    if email == nil, let accountID = statsigIdentity?.accountID {
-                        notes.append("Claude account id: \(accountID)")
-                    }
-                } catch {
-                    // Failed to fetch OAuth usage, but this is not critical
-                    notes.append("Could not fetch OAuth usage: \(error.localizedDescription)")
-                }
+                errors.append("Claude OAuth token expired. Run 'claude' to re-authenticate.")
+                return ClaudeUsageSnapshot(quotaWindows: [], user: nil, errors: errors, notes: notes)
             }
-        } catch let error as ClaudeOAuthCredentialsError {
-            // OAuth credentials not found - this is OK if using custom API
-            switch error {
-            case .notFound:
-                notes.append("OAuth credentials not found. If using custom API, this is expected.")
-            case .decodeFailed, .missingAccessToken, .keychainError, .readFailed:
-                notes.append("OAuth credentials issue: \(error.localizedDescription)")
+
+            let usage = try await ClaudeOAuthUsageFetcher.fetchUsage(accessToken: creds.accessToken)
+            let statsigIdentity = loadStatsigIdentity()
+
+            if let window = makeWindow(title: "Session (5h)", window: usage.fiveHour, windowMinutes: 5 * 60) {
+                quota.append(window)
+            }
+            if let window = makeWindow(title: "Weekly", window: usage.sevenDay, windowMinutes: 7 * 24 * 60) {
+                quota.append(window)
+            }
+            if let window = makeWindow(
+                title: "Weekly (Sonnet/Opus)",
+                window: usage.sevenDaySonnet ?? usage.sevenDayOpus,
+                windowMinutes: 7 * 24 * 60
+            ) {
+                quota.append(window)
+            }
+
+            if let extra = usage.extraUsage, extra.isEnabled == true {
+                let used = extra.usedCredits
+                let limit = extra.monthlyLimit
+                let remaining = (used != nil && limit != nil) ? (limit! - used!) : nil
+                var usedPercent = extra.utilization
+                if usedPercent == nil, let used, let limit, limit > 0 {
+                    usedPercent = (used / limit) * 100
+                }
+                let unit = (extra.currency?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : $0 }
+                    ?? "USD"
+                quota.append(
+                    UsageQuotaWindow(
+                        title: "Extra usage",
+                        usedPercent: usedPercent,
+                        usedAmount: used,
+                        remainingAmount: remaining,
+                        limitAmount: limit,
+                        unit: unit
+                    )
+                )
+            }
+
+            let email = creds.email ?? parseJWTEmail(creds.idToken) ?? parseJWTEmail(creds.accessToken)
+            let organization = creds.organization
+                ?? parseJWTOrganization(creds.idToken)
+                ?? statsigIdentity?.organizationID
+            let subscription = creds.subscriptionType ?? statsigIdentity?.subscriptionType
+            user = UsageUserIdentity(
+                email: email,
+                organization: organization,
+                plan: inferPlan(rateLimitTier: creds.rateLimitTier, subscriptionType: subscription)
+            )
+
+            if quota.isEmpty {
+                notes.append("No Claude subscription usage returned by the OAuth API.")
+            }
+            if email == nil, let accountID = statsigIdentity?.accountID {
+                notes.append("Claude account id: \(accountID)")
             }
         } catch {
-            // Unexpected error
-            notes.append("Unexpected error loading credentials: \(error.localizedDescription)")
+            errors.append(error.localizedDescription)
         }
 
         return ClaudeUsageSnapshot(quotaWindows: quota, user: user, errors: errors, notes: notes)

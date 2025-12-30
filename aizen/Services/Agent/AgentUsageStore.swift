@@ -39,7 +39,7 @@ final class AgentUsageStore: ObservableObject {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
 
-    private init(defaults: UserDefaults = .app) {
+    private init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         load()
     }

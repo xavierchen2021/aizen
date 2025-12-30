@@ -97,14 +97,6 @@ struct aizenApp: App {
                 .task {
                     LicenseManager.shared.start()
                 }
-                .task {
-                    // Validate and cleanup invalid default agent on startup
-                    let validAgent = await AgentRouter().getValidDefaultAgent()
-                    if validAgent != AgentRouter().defaultAgent {
-                        // Agent was reset to default
-                        NotificationCenter.default.post(name: NSNotification.Name("agentConfigurationCleanup"), object: nil)
-                    }
-                }
                 .task(id: "\(terminalFontName)\(terminalFontSize)\(terminalThemeName)") {
                     ghosttyApp.reloadConfig()
                     await TmuxSessionManager.shared.updateConfig()

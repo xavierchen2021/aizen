@@ -17,7 +17,7 @@ struct LicenseCache: Codable, Equatable {
 
 final class LicenseStore {
     private let keychain = KeychainStore(service: "win.aizen.app.license")
-    private let defaults = UserDefaults.app
+    private let defaults = UserDefaults.standard
 
     private enum DefaultsKey {
         static let cache = "license.cache"
